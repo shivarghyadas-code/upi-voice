@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * The system keeps this service bound, so it stays alive without a foreground notification.
- * Each callback does a cheap package check first; only payment-app notifications are parsed.
+ * Each callback does a cheap (cached) package check first; only UPI-app notifications are parsed.
  */
 public class PaymentListenerService extends NotificationListenerService {
 
@@ -26,6 +26,8 @@ public class PaymentListenerService extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         connected = true;
+        Sources.refresh();                 // re-detect UPI apps (new installs / uninstalls)
+        Announcer.get(this).warmUp();      // load the voice now, so payments are spoken instantly
     }
 
     @Override
@@ -42,9 +44,9 @@ public class PaymentListenerService extends NotificationListenerService {
         String pkg = sbn.getPackageName();
 
         String source;
-        if (Sources.isPaymentApp(pkg)) {
+        if (Sources.isPaymentApp(this, pkg)) {
             source = pkg;
-        } else if (Sources.isSmsApp(pkg) && !hasSmsPermission()) {
+        } else if (Sources.isSmsApp(this, pkg) && !hasSmsPermission()) {
             source = Sources.SMS;      // fallback only; normally SmsReceiver handles SMS
         } else {
             return;                     // the vast majority of notifications exit here

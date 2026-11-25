@@ -1,62 +1,144 @@
 package com.shivarghya.upivoice;
 
 import android.app.Notification;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Telephony;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/** Which apps we listen to, and how to read their notification text. */
+/**
+ * Which apps we listen to.
+ *
+ * AUTO-DETECTION: every UPI app on the phone (GPay, PhonePe, Paytm, BHIM, bank apps, new
+ * ones installed later…) registers to open "upi://pay" links — NPCI requires it. So the
+ * first time a notification arrives from an unknown app, we ask Android once whether that
+ * app handles upi://pay, and remember the answer. No list to maintain; a newly installed
+ * UPI app is picked up automatically.
+ *
+ * A small built-in list adds merchant / business apps that may not handle upi://pay.
+ */
 final class Sources {
     private Sources() {}
 
     static final String SMS = "sms";
 
-    private static final Map<String, String> PAYMENT_APPS = new HashMap<>();
-    private static final Map<String, String> SMS_APPS = new HashMap<>();
+    private static final Map<String, String> KNOWN = new LinkedHashMap<>();
+    private static final Map<String, Boolean> SMS_APPS = new HashMap<>();
+    /** Chat apps that also handle upi://pay — chats like "received ₹500, thanks" must not trigger. */
+    private static final Map<String, Boolean> EXCLUDED = new HashMap<>();
+
+    /** package → is it a UPI app? (filled lazily, main thread only) */
+    private static final Map<String, Boolean> cache = new HashMap<>();
+    private static String defaultSmsApp;
 
     static {
-        // UPI apps
-        PAYMENT_APPS.put("com.google.android.apps.nbu.paisa.user", "Google Pay");
-        PAYMENT_APPS.put("com.google.android.apps.nbu.paisa.merchant", "Google Pay Business");
-        PAYMENT_APPS.put("com.phonepe.app", "PhonePe");
-        PAYMENT_APPS.put("com.phonepe.merchant", "PhonePe Business");
-        PAYMENT_APPS.put("com.phonepe.app.business", "PhonePe Business");
-        PAYMENT_APPS.put("net.one97.paytm", "Paytm");
-        PAYMENT_APPS.put("com.paytm.business", "Paytm Business");
-        PAYMENT_APPS.put("in.org.npci.upiapp", "BHIM");
-        PAYMENT_APPS.put("in.amazon.mShop.android.shopping", "Amazon Pay");
-        PAYMENT_APPS.put("com.dreamplug.androidapp", "CRED");
-        PAYMENT_APPS.put("com.mobikwik_new", "MobiKwik");
-        PAYMENT_APPS.put("com.naviapp", "Navi");
-        PAYMENT_APPS.put("money.jupiter", "Jupiter");
-        // Bank apps
-        PAYMENT_APPS.put("com.sbi.lotusintouch", "YONO SBI");
-        PAYMENT_APPS.put("com.sbi.upi", "BHIM SBI Pay");
-        PAYMENT_APPS.put("com.snapwork.hdfc", "HDFC Bank");
-        PAYMENT_APPS.put("com.csam.icici.bank.imobile", "ICICI iMobile");
-        PAYMENT_APPS.put("com.axis.mobile", "Axis Bank");
-        PAYMENT_APPS.put("com.msf.kbank.mobile", "Kotak");
-        PAYMENT_APPS.put("com.bankofbaroda.mconnect", "Bank of Baroda");
-        PAYMENT_APPS.put("com.canarabank.mobility", "Canara Bank");
-        PAYMENT_APPS.put("com.infrasoft.uboi", "Union Bank");
-        PAYMENT_APPS.put("com.Version1", "PNB One");
+        KNOWN.put("com.google.android.apps.nbu.paisa.merchant", "Google Pay for Business");
+        KNOWN.put("com.phonepe.merchant", "PhonePe Business");
+        KNOWN.put("com.phonepe.app.business", "PhonePe Business");
+        KNOWN.put("com.paytm.business", "Paytm for Business");
+        KNOWN.put("com.google.android.apps.nbu.paisa.user", "Google Pay");
+        KNOWN.put("com.phonepe.app", "PhonePe");
+        KNOWN.put("net.one97.paytm", "Paytm");
+        KNOWN.put("in.org.npci.upiapp", "BHIM");
 
-        // SMS apps — only used when the SMS permission is NOT granted (fallback)
-        SMS_APPS.put("com.android.mms", "Messages");
-        SMS_APPS.put("com.google.android.apps.messaging", "Messages");
-        SMS_APPS.put("com.samsung.android.messaging", "Messages");
-        SMS_APPS.put("com.android.messaging", "Messages");
+        SMS_APPS.put("com.android.mms", true);
+        SMS_APPS.put("com.google.android.apps.messaging", true);
+        SMS_APPS.put("com.samsung.android.messaging", true);
+        SMS_APPS.put("com.android.messaging", true);
+
+        EXCLUDED.put("com.whatsapp", true);
+        EXCLUDED.put("com.whatsapp.w4b", true);
+        EXCLUDED.put("org.telegram.messenger", true);
+        EXCLUDED.put("com.truecaller", true);
     }
 
-    static boolean isPaymentApp(String pkg) { return PAYMENT_APPS.containsKey(pkg); }
-    static boolean isSmsApp(String pkg) { return SMS_APPS.containsKey(pkg); }
+    /** Call when apps may have changed (listener reconnect, app opened). */
+    static void refresh() {
+        cache.clear();
+        defaultSmsApp = null;
+    }
 
-    static String label(String source) {
+    static boolean isPaymentApp(Context c, String pkg) {
+        if (KNOWN.containsKey(pkg)) return true;
+        Boolean b = cache.get(pkg);
+        if (b == null) {
+            b = !EXCLUDED.containsKey(pkg) && handlesUpi(c, pkg);
+            cache.put(pkg, b);
+        }
+        return b;
+    }
+
+    static boolean isSmsApp(Context c, String pkg) {
+        if (SMS_APPS.containsKey(pkg)) return true;
+        if (defaultSmsApp == null) {
+            try {
+                String d = Telephony.Sms.getDefaultSmsPackage(c);
+                defaultSmsApp = d != null ? d : "";
+            } catch (RuntimeException e) {
+                defaultSmsApp = "";
+            }
+        }
+        return pkg.equals(defaultSmsApp);
+    }
+
+    private static Intent upiIntent() {
+        return new Intent(Intent.ACTION_VIEW, Uri.parse("upi://pay"));
+    }
+
+    private static boolean handlesUpi(Context c, String pkg) {
+        try {
+            return !c.getPackageManager().queryIntentActivities(upiIntent().setPackage(pkg), 0).isEmpty();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** All UPI / payment apps installed right now, as {package, name}. For the setup screen. */
+    static List<String[]> installedApps(Context c) {
+        PackageManager pm = c.getPackageManager();
+        LinkedHashMap<String, String> found = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : KNOWN.entrySet()) {
+            try {
+                pm.getApplicationInfo(e.getKey(), 0);
+                found.put(e.getKey(), appLabel(c, e.getKey()));
+            } catch (PackageManager.NameNotFoundException ignored) {}
+        }
+        try {
+            for (ResolveInfo ri : pm.queryIntentActivities(upiIntent(), 0)) {
+                String pkg = ri.activityInfo.packageName;
+                if (!EXCLUDED.containsKey(pkg) && !found.containsKey(pkg)) found.put(pkg, appLabel(c, pkg));
+            }
+        } catch (RuntimeException ignored) {}
+        List<String[]> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : found.entrySet()) out.add(new String[]{e.getKey(), e.getValue()});
+        return out;
+    }
+
+    static String label(Context c, String source) {
         if (SMS.equals(source)) return "Bank SMS";
         if ("test".equals(source)) return "Test";
-        String l = PAYMENT_APPS.get(source);
-        return l != null ? l : source;
+        return appLabel(c, source);
+    }
+
+    private static String appLabel(Context c, String pkg) {
+        try {
+            PackageManager pm = c.getPackageManager();
+            ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+            CharSequence l = pm.getApplicationLabel(ai);
+            if (l != null && l.length() > 0) return l.toString();
+        } catch (PackageManager.NameNotFoundException ignored) {}
+        String k = KNOWN.get(pkg);
+        return k != null ? k : pkg;
     }
 
     /** Title + main text of a notification (big text preferred, inbox lines only as a fallback). */

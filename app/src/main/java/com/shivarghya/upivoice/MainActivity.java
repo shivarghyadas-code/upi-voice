@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
     private static final int GREEN = 0xFF1B8A5A, RED = 0xFFC62828;
 
     private LinearLayout root;
-    private TextView stNotif, stSms, stBattery, stListening, stVoice, logView;
+    private TextView stNotif, stSms, stBattery, stListening, stVoice, logView, appsView;
     private Button btnVoice;
 
     @Override
@@ -58,6 +58,8 @@ public class MainActivity extends Activity {
                 NotificationListenerService.requestRebind(new ComponentName(this, PaymentListenerService.class));
             } catch (RuntimeException ignored) {}
         }
+        Sources.refresh();
+        Announcer.get(this).warmUp();
         refresh();
         root.postDelayed(this::refresh, 1500);
     }
@@ -77,6 +79,11 @@ public class MainActivity extends Activity {
         stListening = text("", 14);
         stListening.setPadding(0, dp(6), 0, 0);
         root.addView(stListening);
+
+        section("UPI apps connected (auto-detected)");
+        appsView = text("", 15);
+        root.addView(appsView);
+        root.addView(text("Any UPI app installed later is picked up automatically.", 13));
 
         if (isXiaomi()) {
             section("MIUI / Poco — keep it alive");
@@ -179,6 +186,15 @@ public class MainActivity extends Activity {
         btnVoice.setVisibility(ok ? View.GONE : View.VISIBLE);
         stVoice.setText("⚠ This language's voice isn't installed, so it is speaking English. "
                 + "Tap below → Speech Services by Google → install Bengali / Hindi, then test again.");
+
+        StringBuilder apps = new StringBuilder();
+        for (String[] a : Sources.installedApps(this)) {
+            if (apps.length() > 0) apps.append('\n');
+            apps.append("✅  ").append(a[1]);
+        }
+        if (sms) apps.append(apps.length() > 0 ? "\n" : "").append("✅  Bank SMS (all banks)");
+        appsView.setText(apps.length() == 0 ? "No UPI app found on this phone yet." : apps.toString());
+        appsView.setTextColor(GREEN);
 
         String log = Prefs.log(this);
         logView.setText(log.isEmpty() ? "None yet." : log);

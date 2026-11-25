@@ -20,22 +20,27 @@ import java.util.Iterator;
 import java.util.Locale;
 
 /**
- * Speaks "₹X received". Designed to cost nothing while idle:
- *  - the text-to-speech engine is started only when a payment arrives and shut down
- *    90 s after the last announcement (frees ~20-40 MB),
- *  - a short wake lock keeps the CPU awake only while speaking,
- *  - phone volume is raised just for the announcement and then restored,
- *  - the same payment reported by both the UPI app and the bank SMS is spoken once.
+ * Speaks "₹X received" as fast as possible.
  *
- * Everything runs on the main thread, so no locking is needed.
+ * Speed:
+ *  - The voice engine is kept WARM: it is started as soon as the listener connects, and the
+ *    voice model is pre-loaded with a silent dummy utterance. A payment is spoken immediately,
+ *    with no 1–2 s cold start.
+ *  - If MIUI kills the voice engine in the background, the first failed speak() restarts it
+ *    and the payment is retried automatically.
+ *  - The amount is said first ("500 টাকা পাওয়া গেছে").
+ *
+ * Reliability: a short wake lock keeps the CPU awake while speaking; volume is raised for the
+ * announcement and restored after; the same payment seen in the UPI app and the bank SMS is
+ * spoken once. Everything runs on the main thread, so no locking is needed.
  */
 final class Announcer implements TextToSpeech.OnInitListener {
 
     private static final long DEDUPE_WINDOW_MS = 3 * 60_000L;
-    private static final long IDLE_SHUTDOWN_MS = 90_000L;
     private static final long CALLBACK_TIMEOUT_MS = 9_000L;   // SMS receiver must finish < 10 s
     private static final long SPEECH_SAFETY_MS = 25_000L;
     private static final long INIT_TIMEOUT_MS = 6_000L;
+    private static final String WARM_ID = "warm";
 
     private static Announcer instance;
 
@@ -53,6 +58,7 @@ final class Announcer implements TextToSpeech.OnInitListener {
     private boolean ready;
     private String speakLang = "en";
     private int seq;
+    private int restarts;
 
     private final ArrayDeque<Long> queue = new ArrayDeque<>();
     private final HashSet<String> speaking = new HashSet<>();
@@ -66,7 +72,6 @@ final class Announcer implements TextToSpeech.OnInitListener {
     private AudioFocusRequest focus;
     private int savedStream = -1, savedVolume = -1;
 
-    private final Runnable shutdownRunnable = this::shutdownIfIdle;
     private final Runnable endAudioRunnable = this::endAudio;
     private final Runnable safetyRunnable = () -> {
         speaking.clear();
@@ -77,8 +82,11 @@ final class Announcer implements TextToSpeech.OnInitListener {
     private final Runnable initTimeout = () -> {
         if (!ready) {
             killTts();
-            queue.clear();
-            runCallbacks();
+            if (!queue.isEmpty() && restarts++ < 2) startTts();   // one more try
+            else {
+                queue.clear();
+                runCallbacks();
+            }
         }
     };
 
@@ -92,6 +100,11 @@ final class Announcer implements TextToSpeech.OnInitListener {
 
     // ---------------------------------------------------------------- public API
 
+    /** Start the voice engine now so the next payment is spoken with no delay. Cheap if already warm. */
+    void warmUp() {
+        if (tts == null) startTts();
+    }
+
     /** A payment was detected by {@code source}. {@code onDone} (may be null) runs when speech ends. */
     void offer(String source, long paise, Runnable onDone) {
         if (onDone != null) addCallback(onDone);
@@ -99,15 +112,18 @@ final class Announcer implements TextToSpeech.OnInitListener {
             if (queue.isEmpty() && speaking.isEmpty()) runCallbacks();
             return;
         }
-        Prefs.addLog(app, paise, source);
-        enqueue(paise);
+        enqueue(paise);                       // speak first …
+        Prefs.addLog(app, paise, source);     // … log after
     }
 
     void test(long paise) { enqueue(paise); }
 
     /** Language / channel changed in settings. */
     void settingsChanged() {
-        if (tts != null && ready) applySettings();
+        if (tts != null && ready) {
+            applySettings();
+            preloadVoice();
+        }
     }
 
     // ---------------------------------------------------------------- de-duplication
@@ -147,22 +163,24 @@ final class Announcer implements TextToSpeech.OnInitListener {
 
     // ---------------------------------------------------------------- TTS lifecycle
 
-    private void enqueue(long paise) {
-        main.removeCallbacks(shutdownRunnable);
-        queue.add(paise);
-        if (tts == null) {
-            ready = false;
-            try {
-                tts = new TextToSpeech(app, this);
-                main.postDelayed(initTimeout, INIT_TIMEOUT_MS);
-            } catch (RuntimeException e) {
-                tts = null;
-                queue.clear();
-                runCallbacks();
-            }
-            return;
+    private void startTts() {
+        ready = false;
+        try {
+            tts = new TextToSpeech(app, this);
+            main.removeCallbacks(initTimeout);
+            main.postDelayed(initTimeout, INIT_TIMEOUT_MS);
+        } catch (RuntimeException e) {
+            tts = null;
+            queue.clear();
+            runCallbacks();
         }
-        if (ready) drain();
+    }
+
+    private void enqueue(long paise) {
+        queue.add(paise);
+        if (tts == null) startTts();
+        else if (ready) drain();
+        // else: onInit() will drain
     }
 
     @Override
@@ -184,7 +202,8 @@ final class Announcer implements TextToSpeech.OnInitListener {
         });
         applySettings();
         ready = true;
-        drain();
+        if (queue.isEmpty()) preloadVoice();
+        else drain();
     }
 
     private void applySettings() {
@@ -201,7 +220,15 @@ final class Announcer implements TextToSpeech.OnInitListener {
         speakLang = eff;
         Prefs.putBool(app, "lang_ok", eff.equals(want));
         tts.setAudioAttributes(attributes());
-        tts.setSpeechRate(0.95f);
+        tts.setSpeechRate(1.0f);
+    }
+
+    /** Synthesize a tiny silent phrase so the voice model is loaded into memory before a payment comes. */
+    private void preloadVoice() {
+        Bundle p = new Bundle();
+        p.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0f);
+        try { tts.speak(Speech.phrase(speakLang, 100), TextToSpeech.QUEUE_FLUSH, p, WARM_ID); }
+        catch (RuntimeException ignored) {}
     }
 
     private void drain() {
@@ -209,40 +236,47 @@ final class Announcer implements TextToSpeech.OnInitListener {
         beginAudio();
         boolean twice = Prefs.repeat(app);
         while (!queue.isEmpty()) {
-            String text = phrase(speakLang, queue.poll());
-            speakOne(text);
-            if (twice) {
-                tts.playSilentUtterance(600, TextToSpeech.QUEUE_ADD, "gap" + (++seq));
-                speakOne(text);
+            long paise = queue.peek();
+            String text = Speech.phrase(speakLang, paise);
+            // Nothing real playing? Flush, so a warm-up / silence never delays the announcement.
+            int mode = speaking.isEmpty() ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD;
+            if (!speakOne(text, mode)) {
+                // Engine died in the background (common on MIUI): restart and retry this payment.
+                killTts();
+                if (restarts++ < 2) startTts();
+                else { queue.clear(); endAudio(); runCallbacks(); }
+                return;
             }
-            tts.playSilentUtterance(350, TextToSpeech.QUEUE_ADD, "gap" + (++seq));
-        }
-        if (speaking.isEmpty()) {          // every speak() call failed
-            endAudio();
-            runCallbacks();
+            queue.poll();
+            restarts = 0;
+            if (twice) {
+                tts.playSilentUtterance(500, TextToSpeech.QUEUE_ADD, "gap" + (++seq));
+                speakOne(text, TextToSpeech.QUEUE_ADD);
+            }
+            tts.playSilentUtterance(250, TextToSpeech.QUEUE_ADD, "gap" + (++seq));
         }
     }
 
-    private void speakOne(String text) {
+    private boolean speakOne(String text, int mode) {
         String id = "u" + (++seq);
         Bundle p = new Bundle();
         p.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f);
         p.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, stream());
-        if (tts.speak(text, TextToSpeech.QUEUE_ADD, p, id) == TextToSpeech.SUCCESS) speaking.add(id);
+        int r;
+        try { r = tts.speak(text, mode, p, id); } catch (RuntimeException e) { r = TextToSpeech.ERROR; }
+        if (r == TextToSpeech.SUCCESS) {
+            speaking.add(id);
+            return true;
+        }
+        return false;
     }
 
     private void utteranceEnded(String id) {
-        if (!speaking.remove(id)) return;          // silent gaps etc.
+        if (!speaking.remove(id)) return;          // warm-up, silent gaps etc.
         if (speaking.isEmpty() && queue.isEmpty()) {
-            main.postDelayed(endAudioRunnable, 400); // let the last syllable finish
+            main.postDelayed(endAudioRunnable, 300); // let the last syllable finish
             runCallbacks();
-            main.removeCallbacks(shutdownRunnable);
-            main.postDelayed(shutdownRunnable, IDLE_SHUTDOWN_MS);
         }
-    }
-
-    private void shutdownIfIdle() {
-        if (speaking.isEmpty() && queue.isEmpty()) killTts();
     }
 
     private void killTts() {
@@ -251,6 +285,7 @@ final class Announcer implements TextToSpeech.OnInitListener {
         }
         tts = null;
         ready = false;
+        speaking.clear();
     }
 
     // ---------------------------------------------------------------- audio
@@ -334,31 +369,11 @@ final class Announcer implements TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------------------------------------------------------------- words
-
     private static Locale locale(String lang) {
         switch (lang) {
             case "hi": return new Locale("hi", "IN");
             case "bn": return new Locale("bn", "IN");
             default:   return new Locale("en", "IN");
         }
-    }
-
-    /** The sentence that is spoken. Numbers are left as digits: the voice reads them in its own language. */
-    static String phrase(String lang, long paise) {
-        long r = paise / 100, p = paise % 100;
-        switch (lang) {
-            case "hi":
-                return r + " रुपये" + (p > 0 ? " " + p + " पैसे" : "") + " प्राप्त हुए";
-            case "bn":
-                return r + " টাকা" + (p > 0 ? " " + p + " পয়সা" : "") + " পাওয়া গেছে";
-            default:
-                return "Received " + r + (r == 1 ? " rupee" : " rupees") + (p > 0 ? " and " + p + " paise" : "");
-        }
-    }
-
-    static String formatRupees(long paise) {
-        long r = paise / 100, p = paise % 100;
-        return "₹" + r + (p > 0 ? String.format(Locale.ENGLISH, ".%02d", p) : "");
     }
 }

@@ -12,6 +12,19 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!-- Auto-detect every installed UPI app: they all open upi://pay links -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+        <package android:name="com.google.android.apps.nbu.paisa.merchant" />
+        <package android:name="com.phonepe.merchant" />
+        <package android:name="com.phonepe.app.business" />
+        <package android:name="com.paytm.business" />
+        <package android:name="com.google.android.apps.nbu.paisa.user" />
+        <package android:name="com.phonepe.app" />
+        <package android:name="net.one97.paytm" />
+        <package android:name="in.org.npci.upiapp" />
     </queries>
 
     <application

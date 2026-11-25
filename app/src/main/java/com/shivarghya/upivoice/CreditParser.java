@@ -72,8 +72,8 @@ final class CreditParser {
         try {
             String clean = s.replace(",", "");
             long p = new BigDecimal(clean).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact();
-            // Sanity range: ₹0.01 .. ₹10 crore
-            return (p > 0 && p <= 10_000_000_000L) ? p : -1;
+            // No upper limit: a long holds up to ~₹92,000 lakh crore, more money than exists.
+            return p > 0 ? p : -1;
         } catch (RuntimeException e) {
             return -1;
         }

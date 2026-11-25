@@ -33,7 +33,7 @@ final class Prefs {
 
     static void addLog(Context c, long paise, String source) {
         String time = new SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH).format(new Date());
-        String line = time + "   " + Announcer.formatRupees(paise) + "   · " + Sources.label(source);
+        String line = time + "   " + Speech.formatRupees(paise) + "   · " + Sources.label(c, source);
         String old = sp(c).getString("log", "");
         StringBuilder sb = new StringBuilder(line);
         int n = 1;
