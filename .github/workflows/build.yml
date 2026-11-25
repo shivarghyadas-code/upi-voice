@@ -61,8 +61,12 @@ jobs:
           path: UPI-Voice.apk
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v3.0.${{ github.run_number }}
-          name: UPI Voice v3.0.${{ github.run_number }}
-          files: UPI-Voice.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v3.0.${{ github.run_number }}"
+          for i in 1 2 3; do
+            gh release create "$TAG" UPI-Voice.apk --title "UPI Voice $TAG" --notes "Install UPI-Voice.apk" --latest && exit 0
+            echo "Upload failed, retrying in 15s"; gh release delete "$TAG" -y --cleanup-tag || true; sleep 15
+          done
+          exit 1
