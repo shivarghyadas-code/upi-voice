@@ -60,13 +60,20 @@ jobs:
           name: UPI-Voice
           path: UPI-Voice.apk
 
+      - name: Publish to download branch (permanent link)
+        run: |
+          mkdir /tmp/dl && cp UPI-Voice.apk /tmp/dl/ && cd /tmp/dl
+          git init -q -b download
+          git config user.name "build-bot"
+          git config user.email "build-bot@users.noreply.github.com"
+          git add UPI-Voice.apk
+          git commit -qm "UPI Voice build ${{ github.run_number }} (${GITHUB_SHA::7})"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" download
+
       - name: Publish release
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v3.0.${{ github.run_number }}"
-          for i in 1 2 3; do
-            gh release create "$TAG" UPI-Voice.apk --title "UPI Voice $TAG" --notes "Install UPI-Voice.apk" --latest && exit 0
-            echo "Upload failed, retrying in 15s"; gh release delete "$TAG" -y --cleanup-tag || true; sleep 15
-          done
-          exit 1
+          gh release create "$TAG" UPI-Voice.apk --title "UPI Voice $TAG" --notes "Install UPI-Voice.apk" --latest
