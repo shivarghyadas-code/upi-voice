@@ -31,7 +31,7 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
     private static final int GREEN = 0xFF1B8A5A;
 
     private LinearLayout list;
-    private TextView summary;
+    private TextView summary, scanStatus;
     private Button btnImport;
 
     @Override
@@ -56,10 +56,18 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
         root.addView(btnImport);
         root.addView(button("🗑  Clear transaction history", v -> confirmClear()));
 
-        // Other apps' own history can't be read by any app (Android keeps it private),
-        // so give one-tap access to each installed UPI app instead.
-        section(root, "Check history inside your UPI apps");
-        root.addView(text("Android doesn't let one app read another app's history. Tap to open the app:", 13, 0xFF5F6368));
+        section(root, "Read history from your UPI apps");
+        root.addView(text("1. Tap Start (first time: turn on \"UPI Voice – read app history\" in Accessibility).\n"
+                + "2. Open an app below → its History / Passbook / Statement.\n"
+                + "3. Scroll down slowly. Money received is saved here automatically.\n"
+                + "Stops by itself after 10 minutes. Only money received is saved; nothing leaves the phone.", 14, 0xFF3C4043));
+        scanStatus = text("", 14, GREEN);
+        root.addView(scanStatus);
+        root.addView(button("▶  Start reading app history (10 min)", v -> startScan()));
+        root.addView(button("■  Stop reading", v -> {
+            Prefs.sp(this).edit().putLong("scan_until", 0).apply();
+            renderScan();
+        }));
         PackageManager pm = getPackageManager();
         for (String[] a : Sources.installedApps(this)) {
             Intent launch = pm.getLaunchIntentForPackage(a[0]);
@@ -80,6 +88,51 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
         super.onResume();
         PaymentBus.add(this);
         render();
+        renderScan();
+    }
+
+    // ------------------------------------------------------------------ read other apps' history
+
+    private boolean readerEnabled() {
+        String s = android.provider.Settings.Secure.getString(getContentResolver(),
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return s != null && s.contains(getPackageName() + "/");
+    }
+
+    private void startScan() {
+        if (!readerEnabled()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Turn on the history reader")
+                    .setMessage("Android only lets an app see another app's history through Accessibility.\n\n"
+                            + "On the next screen: Downloaded apps (or Installed services) → "
+                            + "\"UPI Voice – read app history\" → turn ON → Allow.\n\n"
+                            + "It only reads UPI/bank apps, only while you have started it here, and saves only money received.")
+                    .setPositiveButton("Open settings", (d, w) -> {
+                        try { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+                        catch (RuntimeException ignored) {}
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+            return;
+        }
+        Prefs.sp(this).edit().putLong("scan_until", System.currentTimeMillis() + 10 * 60_000L).apply();
+        renderScan();
+        Toast.makeText(this, "Now open a UPI app's history and scroll slowly", Toast.LENGTH_LONG).show();
+    }
+
+    private void renderScan() {
+        long until = Prefs.sp(this).getLong("scan_until", 0);
+        long left = until - System.currentTimeMillis();
+        if (!readerEnabled()) {
+            scanStatus.setText("Reader is OFF (needs Accessibility permission).");
+            scanStatus.setTextColor(0xFFC62828);
+        } else if (left > 0) {
+            scanStatus.setText("● Reading — " + (left / 60_000 + 1) + " min left. Open an app below and scroll its history.");
+            scanStatus.setTextColor(GREEN);
+        } else {
+            scanStatus.setText("Reader is ready. Tap Start before opening an app's history.");
+            scanStatus.setTextColor(0xFF5F6368);
+        }
     }
 
     @Override

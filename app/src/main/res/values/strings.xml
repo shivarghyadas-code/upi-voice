@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">UPI Voice</string>
     <color name="ic_bg">#1B8A5A</color>
+    <string name="acc_desc">Reads the payment history shown on screen in your UPI and bank apps, and saves only the money RECEIVED (amount, date, app) into UPI Voice\'s history. It works only for 10 minutes after you tap \"Start reading\" in History, and only inside UPI apps. UPI Voice has no internet access, so nothing it reads can leave this phone.</string>
 </resources>

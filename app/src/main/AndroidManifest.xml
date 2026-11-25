@@ -49,6 +49,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Reads UPI apps' on-screen history (only while started from History, max 10 min) -->
+        <service
+            android:name=".HistoryReaderService"
+            android:exported="true"
+            android:label="UPI Voice – read app history"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/history_reader" />
+        </service>
+
         <activity
             android:name=".HistoryActivity"
             android:exported="false"

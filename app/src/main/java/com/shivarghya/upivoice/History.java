@@ -70,8 +70,9 @@ final class History {
     }
 
     /**
-     * Add imported items, skipping ones already in the history: same key, or the same payment that
-     * was already recorded live from a UPI app notification (same amount within 10 minutes).
+     * Add imported items, skipping ones already in the history: same key, or the same payment
+     * already recorded from a DIFFERENT source (live alert "n:", bank SMS "sms:", screen "acc:"):
+     * same amount within 10 minutes — or on the same day when only the date is known.
      * @return how many were added
      */
     static synchronized int addAll(Context c, List<Item> items) {
@@ -85,8 +86,12 @@ final class History {
             if (keys.contains(n.key)) continue;
             Item match = null;
             for (Item e : all) {
-                if (e.paise == n.paise && !e.key.startsWith("sms:") && !claimed.contains(e)
-                        && Math.abs(e.time - n.time) <= SAME_PAYMENT_MS) { match = e; break; }
+                if (e.paise != n.paise || claimed.contains(e) || kind(e.key).equals(kind(n.key))) continue;
+                boolean dayOnly = e.key.startsWith("acc:d:") || n.key.startsWith("acc:d:");
+                if (dayOnly ? sameDay(e.time, n.time) : Math.abs(e.time - n.time) <= SAME_PAYMENT_MS) {
+                    match = e;
+                    break;
+                }
             }
             if (match != null) { claimed.add(match); continue; }
             all.add(n);
@@ -95,6 +100,19 @@ final class History {
         }
         if (added > 0) rewrite(c, all);
         return added;
+    }
+
+    private static String kind(String key) {
+        int i = key.indexOf(':');
+        return i < 0 ? key : key.substring(0, i);
+    }
+
+    private static boolean sameDay(long a, long b) {
+        java.util.Calendar x = java.util.Calendar.getInstance(), y = java.util.Calendar.getInstance();
+        x.setTimeInMillis(a);
+        y.setTimeInMillis(b);
+        return x.get(java.util.Calendar.YEAR) == y.get(java.util.Calendar.YEAR)
+                && x.get(java.util.Calendar.DAY_OF_YEAR) == y.get(java.util.Calendar.DAY_OF_YEAR);
     }
 
     private static void rewrite(Context c, List<Item> all) {
