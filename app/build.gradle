@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Release signing comes from environment variables (set by the GitHub workflow).
+// Without them (e.g. a local Android Studio build) the debug key is used.
+def ksPath = System.getenv("KEYSTORE_FILE")
+def hasKeystore = ksPath != null && new File(ksPath).exists()
+
+android {
+    namespace 'com.shivarghya.upivoice'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.shivarghya.upivoice'
+        minSdk 26          // Poco M3 ships Android 10+ (MIUI 12/13)
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        release {
+            if (hasKeystore) {
+                storeFile new File(ksPath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+// No dependencies at all: plain Android framework only, so the APK stays tiny.
