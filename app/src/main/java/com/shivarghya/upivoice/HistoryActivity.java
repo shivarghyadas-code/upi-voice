@@ -37,6 +37,8 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                android.view.WindowManager.LayoutParams.FLAG_SECURE);   // no screenshots of your money
         ScrollView sv = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);

@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
         root.addView(text("Speaks out every UPI payment received on this phone — like a shop soundbox.", 14));
         root.addView(button("Open UPI QR screen (for customers)", v -> startActivity(new Intent(this, QrActivity.class))));
         root.addView(button("📜 Transaction history", v -> startActivity(new Intent(this, HistoryActivity.class))));
+        root.addView(button("📷 Scan & Pay (scam-protected)", v -> startActivity(new Intent(this, PayActivity.class))));
 
         section("1. Setup  (make everything ✅)");
         stNotif = row("Turn on", v -> openNotificationAccess());
