@@ -106,14 +106,17 @@ final class Announcer implements TextToSpeech.OnInitListener {
     }
 
     /** A payment was detected by {@code source}. {@code onDone} (may be null) runs when speech ends. */
-    void offer(String source, long paise, Runnable onDone) {
+    /** @return true if announced, false if it was a duplicate of a payment already spoken. */
+    boolean offer(String source, long paise, Runnable onDone) {
         if (onDone != null) addCallback(onDone);
         if (!isNew(source, paise)) {
             if (queue.isEmpty() && speaking.isEmpty()) runCallbacks();
-            return;
+            return false;
         }
         enqueue(paise);                       // speak first …
+        PaymentBus.post(paise, source);       // … show it on the QR screen at the same instant …
         Prefs.addLog(app, paise, source);     // … log after
+        return true;
     }
 
     void test(long paise) { enqueue(paise); }

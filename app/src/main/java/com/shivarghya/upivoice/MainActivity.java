@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
     private static final int GREEN = 0xFF1B8A5A, RED = 0xFFC62828;
 
     private LinearLayout root;
-    private TextView stNotif, stSms, stBattery, stListening, stVoice, logView, appsView;
+    private TextView stNotif, stSms, stBattery, stListening, stVoice, logView, appsView, diagView, checkResult;
     private Button btnVoice;
 
     @Override
@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
         root.addView(text("Speaks out every UPI payment received on this phone — like a shop soundbox.", 14));
+        root.addView(button("Open UPI QR screen (for customers)", v -> startActivity(new Intent(this, QrActivity.class))));
 
         section("1. Setup  (make everything ✅)");
         stNotif = row("Turn on", v -> openNotificationAccess());
@@ -91,6 +92,8 @@ public class MainActivity extends Activity {
             a.setText("Autostart → turn ON for UPI Voice");
             TextView b = row("Open", v -> openMiuiBatterySaver());
             b.setText("Battery saver → \"No restrictions\"");
+            TextView sp = row("Open", v -> openMiuiPermissions());
+            sp.setText("App permissions → allow ALL SMS items (incl. \"Notification/Service SMS\")");
             root.addView(text("Last step: open Recent apps, long-press UPI Voice and tap the 🔒 lock icon.", 14));
         }
 
@@ -158,6 +161,34 @@ public class MainActivity extends Activity {
         section("Recent payments announced");
         logView = text("", 14);
         root.addView(logView);
+
+        section("Troubleshoot: what the app received");
+        root.addView(text("Every bank SMS and payment-app notification that reaches this app is listed here. "
+                + "If a payment came but is NOT listed, the phone blocked the app (check Autostart, SMS "
+                + "permissions and battery above).", 13));
+        diagView = text("", 13);
+        diagView.setTextIsSelectable(true);
+        diagView.setPadding(0, dp(8), 0, 0);
+        root.addView(diagView);
+
+        section("Check a message");
+        root.addView(text("Copy a bank SMS / notification text, paste it here and tap Check.", 13));
+        final android.widget.EditText box = new android.widget.EditText(this);
+        box.setHint("Paste message here");
+        box.setMinLines(3);
+        root.addView(box);
+        checkResult = text("", 15);
+        root.addView(button("Check", v -> {
+            long p = CreditParser.parse(box.getText().toString());
+            if (p > 0) {
+                checkResult.setText("✅ Would announce: \"" + Speech.phrase(Prefs.lang(this), p) + "\"");
+                checkResult.setTextColor(GREEN);
+            } else {
+                checkResult.setText("❌ Not recognised as money received. Please send this text to the developer.");
+                checkResult.setTextColor(RED);
+            }
+        }));
+        root.addView(checkResult);
     }
 
     private void refresh() {
@@ -195,6 +226,9 @@ public class MainActivity extends Activity {
         if (sms) apps.append(apps.length() > 0 ? "\n" : "").append("✅  Bank SMS (all banks)");
         appsView.setText(apps.length() == 0 ? "No UPI app found on this phone yet." : apps.toString());
         appsView.setTextColor(GREEN);
+
+        String dl = Prefs.diagLog(this);
+        diagView.setText(dl.isEmpty() ? "Nothing received yet." : dl);
 
         String log = Prefs.log(this);
         logView.setText(log.isEmpty() ? "None yet." : log);
@@ -243,6 +277,13 @@ public class MainActivity extends Activity {
                 "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"))
                 .putExtra("package_name", getPackageName())
                 .putExtra("package_label", getString(R.string.app_name));
+        if (!open(i)) openAppDetails();
+    }
+
+    private void openMiuiPermissions() {
+        Intent i = new Intent("miui.intent.action.APP_PERM_EDITOR")
+                .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                .putExtra("extra_pkgname", getPackageName());
         if (!open(i)) openAppDetails();
     }
 

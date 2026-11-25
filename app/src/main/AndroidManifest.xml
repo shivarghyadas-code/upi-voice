@@ -47,6 +47,22 @@
             </intent-filter>
         </activity>
 
+        <!-- Second app icon "UPI QR": the customer-facing QR screen. Same app & process as the
+             voice, so "₹X received" appears on screen at the same instant it is spoken. -->
+        <activity
+            android:name=".QrActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_qr"
+            android:label="UPI QR"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:taskAffinity="com.shivarghya.upivoice.qr">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Reads payment notifications from UPI / bank apps. Bound by the system, so no
              foreground service or persistent notification is needed. -->
         <service

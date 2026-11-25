@@ -63,7 +63,14 @@ public class PaymentListenerService extends NotificationListenerService {
         seen.put(key, Boolean.TRUE);
 
         long paise = CreditParser.parse(text);
-        if (paise > 0) Announcer.get(this).offer(source, paise, null);
+        String label = Sources.label(this, source);
+        if (paise > 0) {
+            boolean spoken = Announcer.get(this).offer(source, paise, null);
+            Prefs.diag(this, label, text, spoken ? "ANNOUNCED " + Speech.formatRupees(paise)
+                    : "duplicate of " + Speech.formatRupees(paise) + " already spoken");
+        } else {
+            Prefs.diag(this, label, text, "not an incoming payment");
+        }
     }
 
     private boolean hasSmsPermission() {

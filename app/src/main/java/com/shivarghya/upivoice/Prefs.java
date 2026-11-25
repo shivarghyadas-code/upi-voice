@@ -46,4 +46,23 @@ final class Prefs {
     }
 
     static String log(Context c) { return sp(c).getString("log", ""); }
+
+    /** Troubleshooting log: every bank SMS / payment notification seen, and what we decided. */
+    static void diag(Context c, String source, String text, String result) {
+        String time = new SimpleDateFormat("h:mm:ss a", Locale.ENGLISH).format(new Date());
+        String snip = text == null ? "" : text.replace('\n', ' ');
+        if (snip.length() > 110) snip = snip.substring(0, 110) + "…";
+        String entry = time + " · " + source + " → " + result + (snip.isEmpty() ? "" : "\n   \"" + snip + "\"");
+        String old = sp(c).getString("diag", "");
+        StringBuilder sb = new StringBuilder(entry);
+        int n = 1;
+        for (String e : old.split("\n\n")) {
+            if (e.isEmpty() || n >= 20) continue;
+            sb.append("\n\n").append(e);
+            n++;
+        }
+        sp(c).edit().putString("diag", sb.toString()).apply();
+    }
+
+    static String diagLog(Context c) { return sp(c).getString("diag", ""); }
 }

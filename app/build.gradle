@@ -15,8 +15,8 @@ android {
         applicationId 'com.shivarghya.upivoice'
         minSdk 26          // Poco M3 ships Android 10+ (MIUI 12/13)
         targetSdk 34
-        versionCode 3
-        versionName '3.0'
+        versionCode 4
+        versionName '4.0'
     }
 
     signingConfigs {
@@ -49,4 +49,7 @@ android {
         checkReleaseBuilds false
     }
 }
-// No dependencies at all: plain Android framework only, so the APK stays tiny.
+dependencies {
+    // QR code drawing only (shrunk by R8 to a few KB of what's used)
+    implementation 'com.google.zxing:core:3.5.3'
+}
