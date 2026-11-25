@@ -33,6 +33,8 @@ public class MainActivity extends Activity {
     private static final int GREEN = 0xFF1B8A5A, RED = 0xFFC62828;
 
     private LinearLayout root;
+    private TextView crashView;
+    private Button crashBtn;
     private TextView stNotif, stSms, stBattery, stListening, stVoice, logView, appsView, diagView, checkResult;
     private Button btnVoice;
 
@@ -167,6 +169,19 @@ public class MainActivity extends Activity {
         root.addView(logView);
         root.addView(button("📜 Full history / import bank SMS / clear", v -> startActivity(new Intent(this, HistoryActivity.class))));
 
+        crashView = text("", 13);
+        crashView.setTextColor(RED);
+        crashView.setTextIsSelectable(true);
+        root.addView(crashView);
+        crashBtn = button("Copy error & clear", v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("UPI Voice error", CrashLog.get(this)));
+            CrashLog.clear(this);
+            Toast.makeText(this, "Error copied — paste it in your message to the developer", Toast.LENGTH_LONG).show();
+            refresh();
+        });
+        root.addView(crashBtn);
+
         section("Troubleshoot: what the app received");
         root.addView(text("Every bank SMS and payment-app notification that reaches this app is listed here. "
                 + "If a payment came but is NOT listed, the phone blocked the app (check Autostart, SMS "
@@ -240,6 +255,11 @@ public class MainActivity extends Activity {
         if (sms) apps.append(apps.length() > 0 ? "\n" : "").append("✅  Bank SMS (all banks)");
         appsView.setText(apps.length() == 0 ? "No UPI app found on this phone yet." : apps.toString());
         appsView.setTextColor(GREEN);
+
+        String crash = CrashLog.get(this);
+        crashView.setVisibility(crash.isEmpty() ? View.GONE : View.VISIBLE);
+        crashBtn.setVisibility(crash.isEmpty() ? View.GONE : View.VISIBLE);
+        crashView.setText("⚠ The app hit an error last time:\n" + (crash.length() > 600 ? crash.substring(0, 600) + "…" : crash));
 
         String dl = Prefs.diagLog(this);
         diagView.setText(dl.isEmpty() ? "Nothing received yet." : dl);

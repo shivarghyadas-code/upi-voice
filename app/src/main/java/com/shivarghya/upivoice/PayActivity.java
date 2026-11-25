@@ -104,9 +104,14 @@ public class PayActivity extends ComponentActivity {
         // No screenshots / screen recording / screen-sharing of this screen.
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         exec = Executors.newSingleThreadExecutor();
-        scanner = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE).build());
         buildUi();
+        try {
+            scanner = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE).build());
+        } catch (Throwable t) {
+            CrashLog.save(this, "Scan & Pay scanner", t);
+            hint.setText("QR scanner failed to start. Use \"UPI ID / No.\" below.");
+        }
     }
 
     @Override
@@ -123,12 +128,15 @@ public class PayActivity extends ComponentActivity {
     protected void onDestroy() {
         super.onDestroy();
         exec.shutdown();
-        scanner.close();
+        if (scanner != null) scanner.close();
     }
 
     private void ready() {
         lockView.setVisibility(View.GONE);
-        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCamera();
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            try { startCamera(); }
+            catch (Throwable t) { CrashLog.save(this, "Scan & Pay camera", t); hint.setText("Camera failed to start."); }
+        }
         else requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM);
     }
 
@@ -136,48 +144,27 @@ public class PayActivity extends ComponentActivity {
 
     private void authenticate() {
         KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
-        if (km == null || !km.isDeviceSecure()) {
+        Intent i = null;
+        try {
+            if (km != null && km.isDeviceSecure())
+                i = km.createConfirmDeviceCredentialIntent("Unlock Scan & Pay", "Use your fingerprint, PIN or pattern");
+        } catch (RuntimeException ignored) {}
+        if (i == null) {
+            // No screen lock on this phone (or the lock screen can't be shown): open, with a tip.
             unlockedAt = System.currentTimeMillis();
-            Toast.makeText(this, "Tip: set a screen lock (PIN/fingerprint) so nobody else can pay from this phone",
-                    Toast.LENGTH_LONG).show();
+            if (km == null || !km.isDeviceSecure())
+                Toast.makeText(this, "Tip: set a screen lock (PIN/fingerprint) so nobody else can pay from this phone",
+                        Toast.LENGTH_LONG).show();
             ready();
             return;
         }
         authInProgress = true;
-        if (Build.VERSION.SDK_INT >= 29) {
-            android.hardware.biometrics.BiometricPrompt.Builder b = new android.hardware.biometrics.BiometricPrompt.Builder(this)
-                    .setTitle("Unlock Scan & Pay")
-                    .setSubtitle("Fingerprint or phone lock");
-            if (Build.VERSION.SDK_INT >= 30) {
-                b.setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK
-                        | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL);
-            } else {
-                b.setDeviceCredentialAllowed(true);
-            }
-            b.build().authenticate(new CancellationSignal(), getMainExecutor(),
-                    new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                        @Override
-                        public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) {
-                            authInProgress = false;
-                            unlockedAt = System.currentTimeMillis();
-                            ready();
-                        }
-
-                        @Override
-                        public void onAuthenticationError(int code, CharSequence msg) {
-                            authInProgress = false;
-                            lockView.setVisibility(View.VISIBLE);
-                        }
-                    });
-        } else {
-            Intent i = km.createConfirmDeviceCredentialIntent("Unlock Scan & Pay", "Use your phone lock");
-            if (i == null) {
-                authInProgress = false;
-                unlockedAt = System.currentTimeMillis();
-                ready();
-            } else {
-                startActivityForResult(i, REQ_LOCK);
-            }
+        try {
+            startActivityForResult(i, REQ_LOCK);
+        } catch (RuntimeException e) {
+            authInProgress = false;
+            unlockedAt = System.currentTimeMillis();
+            ready();
         }
     }
 
@@ -199,7 +186,8 @@ public class PayActivity extends ComponentActivity {
                 provider.unbindAll();
                 camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, p, a);
                 torchBtn.setEnabled(camera.getCameraInfo().hasFlashUnit());
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                CrashLog.save(this, "Scan & Pay camera", e);
                 hint.setText("Camera not available. Use \"Photo\" or \"UPI ID / No.\" below.");
             }
         }, main::post);
@@ -207,7 +195,7 @@ public class PayActivity extends ComponentActivity {
 
     @ExperimentalGetImage
     private void analyze(ImageProxy img) {
-        if (busy) { img.close(); return; }
+        if (busy || scanner == null) { img.close(); return; }
         checkLight(img);
         Image media = img.getImage();
         if (media == null) { img.close(); return; }
@@ -624,6 +612,7 @@ public class PayActivity extends ComponentActivity {
     }
 
     private void scanPhoto(Uri uri) {
+        if (scanner == null) { toast("QR scanner not available"); resume(); return; }
         try {
             InputImage in = InputImage.fromFilePath(this, uri);
             scanner.process(in).addOnSuccessListener(list -> {
