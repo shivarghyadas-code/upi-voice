@@ -140,8 +140,12 @@ public class QrActivity extends Activity implements PaymentBus.Listener {
         nav.addView(next);
         content.addView(nav);
 
-        Button manage = button("⚙  Manage UPI IDs / QR", v -> manage());
-        content.addView(manage);
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.HORIZONTAL);
+        bottom.setGravity(Gravity.CENTER);
+        bottom.addView(button("⚙  Manage UPI IDs / QR", v -> manage()));
+        bottom.addView(button("📜 History", v -> startActivity(new Intent(this, HistoryActivity.class))));
+        content.addView(bottom);
 
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
 

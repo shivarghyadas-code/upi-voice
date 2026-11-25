@@ -72,6 +72,7 @@ public class MainActivity extends Activity {
         root.addView(title);
         root.addView(text("Speaks out every UPI payment received on this phone — like a shop soundbox.", 14));
         root.addView(button("Open UPI QR screen (for customers)", v -> startActivity(new Intent(this, QrActivity.class))));
+        root.addView(button("📜 Transaction history", v -> startActivity(new Intent(this, HistoryActivity.class))));
 
         section("1. Setup  (make everything ✅)");
         stNotif = row("Turn on", v -> openNotificationAccess());
@@ -160,9 +161,10 @@ public class MainActivity extends Activity {
         test.setTextSize(18);
         root.addView(test);
 
-        section("Recent payments announced");
+        section("Recent payments");
         logView = text("", 14);
         root.addView(logView);
+        root.addView(button("📜 Full history / import bank SMS / clear", v -> startActivity(new Intent(this, HistoryActivity.class))));
 
         section("Troubleshoot: what the app received");
         root.addView(text("Every bank SMS and payment-app notification that reaches this app is listed here. "
@@ -172,6 +174,14 @@ public class MainActivity extends Activity {
         diagView.setTextIsSelectable(true);
         diagView.setPadding(0, dp(8), 0, 0);
         root.addView(diagView);
+        root.addView(button("🗑  Clear troubleshooting log", v -> new android.app.AlertDialog.Builder(this)
+                .setMessage("Clear the troubleshooting / error log?")
+                .setPositiveButton("Clear", (d, w) -> {
+                    Prefs.sp(this).edit().remove("diag").apply();
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show()));
 
         section("Check a message");
         root.addView(text("Copy a bank SMS / notification text, paste it here and tap Check.", 13));
@@ -233,8 +243,16 @@ public class MainActivity extends Activity {
         String dl = Prefs.diagLog(this);
         diagView.setText(dl.isEmpty() ? "Nothing received yet." : dl);
 
-        String log = Prefs.log(this);
-        logView.setText(log.isEmpty() ? "None yet." : log);
+        java.util.List<History.Item> hist = History.load(this);
+        StringBuilder recent = new StringBuilder();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale.ENGLISH);
+        for (int i = 0; i < Math.min(5, hist.size()); i++) {
+            History.Item it = hist.get(i);
+            if (recent.length() > 0) recent.append('\n');
+            recent.append(f.format(new java.util.Date(it.time))).append("   ")
+                    .append(Speech.formatRupees(it.paise)).append("   · ").append(it.source);
+        }
+        logView.setText(recent.length() == 0 ? "None yet." : recent.toString());
     }
 
     // ------------------------------------------------------------------ actions

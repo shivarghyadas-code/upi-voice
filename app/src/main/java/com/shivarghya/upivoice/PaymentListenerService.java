@@ -76,7 +76,7 @@ public class PaymentListenerService extends NotificationListenerService {
         long paise = CreditParser.parse(text);
         String label = Sources.label(this, source);
         if (paise > 0) {
-            boolean spoken = Announcer.get(this).offer(source, paise, null);
+            boolean spoken = Announcer.get(this).offer(source, paise, null, "n:" + key);
             Prefs.diag(this, label, text, spoken ? "ANNOUNCED " + Speech.formatRupees(paise)
                     : "duplicate of " + Speech.formatRupees(paise) + " already spoken");
         } else {

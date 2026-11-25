@@ -11,8 +11,6 @@ import java.util.Locale;
 final class Prefs {
     private Prefs() {}
 
-    private static final int LOG_MAX = 15;
-
     static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences("upivoice", Context.MODE_PRIVATE);
     }
@@ -31,22 +29,6 @@ final class Prefs {
     static void putBool(Context c, String k, boolean v) { sp(c).edit().putBoolean(k, v).apply(); }
     static void putInt(Context c, String k, int v) { sp(c).edit().putInt(k, v).apply(); }
     static void putString(Context c, String k, String v) { sp(c).edit().putString(k, v).apply(); }
-
-    static void addLog(Context c, long paise, String source) {
-        String time = new SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH).format(new Date());
-        String line = time + "   " + Speech.formatRupees(paise) + "   · " + Sources.label(c, source);
-        String old = sp(c).getString("log", "");
-        StringBuilder sb = new StringBuilder(line);
-        int n = 1;
-        for (String l : old.split("\n")) {
-            if (l.isEmpty() || n >= LOG_MAX) continue;
-            sb.append('\n').append(l);
-            n++;
-        }
-        sp(c).edit().putString("log", sb.toString()).apply();
-    }
-
-    static String log(Context c) { return sp(c).getString("log", ""); }
 
     /** Troubleshooting log: every bank SMS / payment notification seen, and what we decided. */
     static void diag(Context c, String source, String text, String result) {

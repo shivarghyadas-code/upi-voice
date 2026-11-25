@@ -15,8 +15,8 @@ android {
         applicationId 'com.shivarghya.upivoice'
         minSdk 26          // Poco M3 ships Android 10+ (MIUI 12/13)
         targetSdk 34
-        versionCode 5
-        versionName '5.0'
+        versionCode 6
+        versionName '6.0'
     }
 
     signingConfigs {

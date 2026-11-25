@@ -47,7 +47,8 @@ public class SmsReceiver extends BroadcastReceiver {
 
         // Keep the receiver alive until the announcement has been spoken (max ~9 s).
         final PendingResult pending = goAsync();
-        boolean spoken = Announcer.get(context).offer(Sources.SMS, paise, pending::finish);
+        boolean spoken = Announcer.get(context).offer(Sources.SMS, paise, pending::finish,
+                "sms:" + msgs[0].getTimestampMillis() + ":" + paise);
         Prefs.diag(context, "SMS " + sender, text, spoken ? "ANNOUNCED " + Speech.formatRupees(paise)
                 : "duplicate of " + Speech.formatRupees(paise) + " already spoken");
     }
