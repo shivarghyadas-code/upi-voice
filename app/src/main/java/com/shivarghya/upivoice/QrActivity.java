@@ -146,6 +146,9 @@ public class QrActivity extends Activity implements PaymentBus.Listener {
         bottom.addView(button("⚙  Manage UPI IDs / QR", v -> manage()));
         bottom.addView(button("📜 History", v -> startActivity(new Intent(this, HistoryActivity.class))));
         content.addView(bottom);
+        Button chk = button("✔  Check payment (works offline)", v -> startActivity(
+                new Intent(this, PaymentCheckActivity.class).putExtra("paise", expected)));
+        content.addView(chk);
 
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
 
@@ -169,8 +172,10 @@ public class QrActivity extends Activity implements PaymentBus.Listener {
     private void render() {
         boolean voiceReady = notificationAccess()
                 || checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED;
-        tvStatus.setText(voiceReady ? "🔊 Payment is confirmed on this screen and by voice"
-                : "⚠ Voice not set up — tap here to open UPI Voice");
+        boolean online = PaymentCheckActivity.online(this);
+        tvStatus.setText(!voiceReady ? "⚠ Voice not set up — tap here to open UPI Voice"
+                : online ? "🔊 Payment is confirmed on this screen and by voice"
+                : "📴 No internet — payment is still confirmed from the bank SMS");
         tvStatus.setTextColor(voiceReady ? 0xFF5F6368 : ORANGE);
 
         if (entries.isEmpty()) {

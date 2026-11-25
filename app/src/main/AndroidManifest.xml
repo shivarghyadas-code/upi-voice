@@ -7,6 +7,8 @@
     <!-- Only used when you tap "Import from bank SMS" in History -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- only to show "online / offline" on the Check payment screen -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -93,6 +95,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".PaymentCheckActivity"
+            android:exported="false"
+            android:label="Check payment"
+            android:windowSoftInputMode="stateVisible" />
 
         <activity
             android:name=".BankSmsActivity"
