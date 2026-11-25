@@ -7,5 +7,6 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         CrashLog.install(this);
+        SmsWatcher.start(this);
     }
 }

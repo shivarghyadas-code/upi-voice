@@ -24,6 +24,7 @@ public class PaymentListenerService extends NotificationListenerService {
         connected = true;
         Sources.refresh();                 // re-detect UPI apps (new installs / uninstalls)
         Announcer.get(this).warmUp();      // load the voice now, so payments are spoken instantly
+        SmsWatcher.start(this);            // second, offline path for bank SMS
         catchUp();
     }
 
@@ -73,7 +74,7 @@ public class PaymentListenerService extends NotificationListenerService {
         String key = sbn.getKey() + '|' + text.hashCode();
         if (alreadySeen(key)) return;
 
-        long paise = CreditParser.parse(text);
+        long paise = Decide.credit(this, pkg, text);
         String label = Sources.label(this, source);
         if (paise > 0) {
             boolean spoken = Announcer.get(this).offer(source, paise, null, "n:" + key);

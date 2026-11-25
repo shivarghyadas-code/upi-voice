@@ -52,20 +52,46 @@ final class CreditParser {
 
     static long parse(String raw) {
         if (raw == null || raw.isEmpty()) return -1;
-        String t = raw.replace('\n', ' ').replace(' ', ' ');
+        String t = clean(raw);
         if (!CREDIT.matcher(t).find()) return -1;
         if (DEBIT.matcher(t).find()) return -1;
         if (IGNORE.matcher(t).find()) return -1;
+        return amountOnly(t);
+    }
 
-        t = BALANCE.matcher(t).replaceAll(" ");
-
+    /** The money amount in the text (balance ignored), without judging credit/debit. -1 if none. */
+    static long amountOnly(String raw) {
+        if (raw == null) return -1;
+        String t = BALANCE.matcher(clean(raw)).replaceAll(" ");
         Matcher m = CURRENCY_BEFORE.matcher(t);
         if (m.find()) return toPaise(m.group(1));
         m = CURRENCY_AFTER.matcher(t);
         if (m.find()) return toPaise(m.group(1));
         m = CREDITED_BY.matcher(t);
         if (m.find()) return toPaise(m.group(1));
+        m = MOVED_BY.matcher(t);
+        if (m.find()) return toPaise(m.group(1));
         return -1;
+    }
+
+    private static final Pattern MOVED_BY = Pattern.compile(
+            "(?:credited|debited|deposited|received)\\s+(?:by|with|for|of)?\\s*:?\\s*" + NUM, F);
+    private static final Pattern MONEY_OUT = Pattern.compile(
+            "\\b(debited|debit|paid to|sent to|spent|withdrawn|withdrawal|purchase|you paid|you sent|transferred to)\\b", F);
+
+    /** For the bank-message log: CREDIT, DEBIT, IGNORED (offer/OTP/failed…), UNKNOWN (has money, not understood), NONE. */
+    static String classify(String raw) {
+        if (raw == null) return "NONE";
+        if (parse(raw) > 0) return "CREDIT";
+        String t = clean(raw);
+        if (MONEY_OUT.matcher(t).find()) return "DEBIT";
+        boolean money = amountOnly(t) > 0;
+        if (money && IGNORE.matcher(t).find()) return "IGNORED";
+        return money ? "UNKNOWN" : "NONE";
+    }
+
+    private static String clean(String raw) {
+        return raw.replace('\n', ' ').replace('\u00A0', ' ');
     }
 
     private static long toPaise(String s) {

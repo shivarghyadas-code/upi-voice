@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
         root.addView(button("Open UPI QR screen (for customers)", v -> startActivity(new Intent(this, QrActivity.class))));
         root.addView(button("📜 Transaction history", v -> startActivity(new Intent(this, HistoryActivity.class))));
         root.addView(button("📷 Scan & Pay (scam-protected)", v -> startActivity(new Intent(this, PayActivity.class))));
+        root.addView(button("🏦 Bank messages (offline) / teach formats", v -> startActivity(new Intent(this, BankSmsActivity.class))));
 
         section("1. Setup  (make everything ✅)");
         stNotif = row("Turn on", v -> openNotificationAccess());
@@ -207,7 +208,7 @@ public class MainActivity extends Activity {
         root.addView(box);
         checkResult = text("", 15);
         root.addView(button("Check", v -> {
-            long p = CreditParser.parse(box.getText().toString());
+            long p = Decide.credit(this, null, box.getText().toString());
             if (p > 0) {
                 checkResult.setText("✅ Would announce: \"" + Speech.phrase(Prefs.lang(this), p) + "\"");
                 checkResult.setTextColor(GREEN);
@@ -221,12 +222,14 @@ public class MainActivity extends Activity {
 
     private void refresh() {
         boolean notif = listenerEnabled();
-        boolean sms = checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED;
+        boolean sms = checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED;
+        if (sms) SmsWatcher.start(this);
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         boolean battery = pm.isIgnoringBatteryOptimizations(getPackageName());
 
         status(stNotif, notif, "Notification access (GPay, PhonePe, Paytm…)");
-        status(stSms, sms, "Bank SMS (most reliable)");
+        status(stSms, sms, "Bank SMS — works offline (most reliable)");
         status(stBattery, battery, "Battery: unrestricted");
 
         if (!notif && !sms) {
@@ -289,12 +292,13 @@ public class MainActivity extends Activity {
     }
 
     private void requestSms() {
-        requestPermissions(new String[]{Manifest.permission.RECEIVE_SMS}, REQ_SMS);
+        requestPermissions(new String[]{Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS}, REQ_SMS);
     }
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
+        SmsWatcher.start(this);
         if (code == REQ_SMS && (res.length == 0 || res[0] != PackageManager.PERMISSION_GRANTED)) {
             Toast.makeText(this, "Allow SMS in App info → Permissions", Toast.LENGTH_LONG).show();
             openAppDetails();

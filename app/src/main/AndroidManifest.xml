@@ -95,6 +95,11 @@
         </activity>
 
         <activity
+            android:name=".BankSmsActivity"
+            android:exported="false"
+            android:label="Bank messages" />
+
+        <activity
             android:name=".HistoryActivity"
             android:exported="false"
             android:label="Transaction history" />

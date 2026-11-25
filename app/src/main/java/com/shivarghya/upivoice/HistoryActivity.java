@@ -282,7 +282,7 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
                         String body = cur.getString(1);
                         long date = cur.getLong(2), sent = cur.getLong(3);
                         if (addr == null || !addr.matches(".*[A-Za-z].*")) continue;   // banks only
-                        long p = CreditParser.parse(body);
+                        long p = Decide.credit(ctx, Learned.normSender(addr), body);
                         if (p <= 0) continue;
                         History.Item it = new History.Item();
                         it.time = date;
