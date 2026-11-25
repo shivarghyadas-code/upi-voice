@@ -50,6 +50,11 @@ final class Sources {
         KNOWN.put("com.phonepe.app", "PhonePe");
         KNOWN.put("net.one97.paytm", "Paytm");
         KNOWN.put("in.org.npci.upiapp", "BHIM");
+        // Banks — always connected, even if the app doesn't register for upi:// links
+        KNOWN.put("com.sbi.lotusintouch", "YONO SBI");
+        KNOWN.put("com.sbi.SBIFreedomPlus", "YONO Lite SBI");
+        KNOWN.put("com.sbi.upi", "BHIM SBI Pay");
+        KNOWN.put("com.Version1", "PNB ONE");
 
         SMS_APPS.put("com.android.mms", true);
         SMS_APPS.put("com.google.android.apps.messaging", true);
