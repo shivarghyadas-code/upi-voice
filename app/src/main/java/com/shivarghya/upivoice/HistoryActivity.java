@@ -28,7 +28,7 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
 
     private static final int REQ_READ_SMS = 31;
     private static final int SHOW_MAX = 300;
-    private static final int GREEN = 0xFF1B8A5A;
+    private static final int GREEN = 0xFF1B8A5A, ORANGE = 0xFFE65100;
 
     private LinearLayout list;
     private TextView summary, scanStatus;
@@ -158,9 +158,15 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
         for (History.Item it : items) {
             if (it.time >= todayStart) { todayTotal += it.paise; todayCount++; }
         }
+        long installed = installTime();
+        int todayMissed = 0;
+        for (History.Item it : items) if (it.time >= todayStart && isMissed(it, installed)) todayMissed++;
         summary.setText("Today: " + Speech.formatRupees(todayTotal) + "  from " + todayCount
-                + (todayCount == 1 ? " payment" : " payments"));
+                + (todayCount == 1 ? " payment" : " payments")
+                + (todayMissed > 0 ? "\n⚠ " + todayMissed + " not announced — tap it to see why" : ""));
+        summary.setTextColor(todayMissed > 0 ? ORANGE : GREEN);
 
+        list.addView(text("🔊 = announced     ⚠ MISSED = found later in SMS / app history but not announced", 13, 0xFF5F6368));
         if (items.isEmpty()) {
             list.addView(text("No payments yet. Tap \"Import from bank SMS\" to load past payments.", 15, 0xFF5F6368));
             return;
@@ -192,8 +198,12 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setPadding(0, dp(6), 0, dp(6));
-            TextView left = text(timeFmt.format(new Date(it.time)) + "   " + it.source, 15, 0xFF3C4043);
-            TextView right = text("+" + Speech.formatRupees(it.paise), 16, GREEN);
+            boolean missed = isMissed(it, installed);
+            String mark = it.announced ? "🔊 " : missed ? "⚠ MISSED  " : "";
+            TextView left = text(mark + timeFmt.format(new Date(it.time)) + "   " + it.source, 15,
+                    missed ? ORANGE : 0xFF3C4043);
+            TextView right = text("+" + Speech.formatRupees(it.paise), 16, missed ? ORANGE : GREEN);
+            if (missed) row.setOnClickListener(v -> explainMissed(it));
             right.setTypeface(Typeface.DEFAULT_BOLD);
             row.addView(left, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(right);
@@ -204,6 +214,31 @@ public class HistoryActivity extends Activity implements PaymentBus.Listener {
         if (items.size() > SHOW_MAX) {
             list.addView(text("Showing the latest " + SHOW_MAX + " of " + items.size() + ".", 13, 0xFF5F6368));
         }
+    }
+
+    /** Not spoken, and received after UPI Voice was installed (older payments can't have been announced). */
+    private static boolean isMissed(History.Item it, long installed) {
+        return !it.announced && it.time >= installed;
+    }
+
+    private long installTime() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).firstInstallTime; }
+        catch (Exception e) { return 0; }
+    }
+
+    private void explainMissed(History.Item it) {
+        new AlertDialog.Builder(this)
+                .setTitle("⚠ " + Speech.formatRupees(it.paise) + " was not announced")
+                .setMessage("This payment was found later (" + it.source + ") but UPI Voice did not speak it "
+                        + "when it arrived.\n\nUsual reasons:\n"
+                        + "• MIUI stopped the app — check Autostart, Battery saver \"No restrictions\", and lock it in Recents\n"
+                        + "• Bank SMS permission or Notification access is off\n"
+                        + "• \"Announcements ON\" was switched off\n"
+                        + "• The bank's SMS format wasn't recognised — use \"Check a message\" in UPI Voice\n\n"
+                        + "Open UPI Voice → Troubleshoot to see what the app received at that time.")
+                .setPositiveButton("Open UPI Voice setup", (d, w) -> startActivity(new Intent(this, MainActivity.class)))
+                .setNegativeButton("OK", null)
+                .show();
     }
 
     private void setDayHeader(TextView t, long day, long total, int count, long todayStart, SimpleDateFormat f) {

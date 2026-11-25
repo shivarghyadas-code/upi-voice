@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < Math.min(5, hist.size()); i++) {
             History.Item it = hist.get(i);
             if (recent.length() > 0) recent.append('\n');
-            recent.append(f.format(new java.util.Date(it.time))).append("   ")
+            recent.append(it.announced ? "🔊 " : "").append(f.format(new java.util.Date(it.time))).append("   ")
                     .append(Speech.formatRupees(it.paise)).append("   · ").append(it.source);
         }
         logView.setText(recent.length() == 0 ? "None yet." : recent.toString());

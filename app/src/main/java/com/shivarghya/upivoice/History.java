@@ -26,6 +26,7 @@ final class History {
         long paise;
         String source;  // e.g. "Google Pay", "Bank SMS · SBIUPI"
         String key;     // de-duplication key
+        boolean announced;  // spoken by UPI Voice when it arrived
     }
 
     private static final String FILE = "history.tsv";
@@ -54,6 +55,7 @@ final class History {
                     it.paise = Long.parseLong(p[1]);
                     it.source = p[2];
                     it.key = p[3];
+                    it.announced = p.length > 4 && "A".equals(p[4]);
                     out.add(it);
                 } catch (NumberFormatException ignored) {}
             }
@@ -62,10 +64,10 @@ final class History {
         return out;
     }
 
-    /** Append one live payment. */
+    /** Append one live payment (it was just announced). */
     static synchronized void add(Context c, long time, long paise, String source, String key) {
         try (Writer w = new OutputStreamWriter(new FileOutputStream(file(c), true), StandardCharsets.UTF_8)) {
-            w.write(time + "\t" + paise + "\t" + clean(source) + "\t" + clean(key) + "\n");
+            w.write(time + "\t" + paise + "\t" + clean(source) + "\t" + clean(key) + "\tA\n");
         } catch (Exception ignored) {}
     }
 
@@ -120,7 +122,8 @@ final class History {
         if (all.size() > MAX) all = new ArrayList<>(all.subList(0, MAX));
         all.sort((a, b) -> Long.compare(a.time, b.time));
         try (Writer w = new OutputStreamWriter(new FileOutputStream(file(c), false), StandardCharsets.UTF_8)) {
-            for (Item it : all) w.write(it.time + "\t" + it.paise + "\t" + clean(it.source) + "\t" + clean(it.key) + "\n");
+            for (Item it : all) w.write(it.time + "\t" + it.paise + "\t" + clean(it.source) + "\t" + clean(it.key)
+                    + (it.announced ? "\tA" : "\t") + "\n");
         } catch (Exception ignored) {}
     }
 
