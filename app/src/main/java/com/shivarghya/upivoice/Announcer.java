@@ -8,9 +8,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.SystemClock;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Speaks "₹X received" as fast as possible.
@@ -36,7 +37,12 @@ import java.util.Locale;
  */
 final class Announcer implements TextToSpeech.OnInitListener {
 
-    private static final long DEDUPE_WINDOW_MS = 3 * 60_000L;
+    /**
+     * On slow mobile data the GPay/PhonePe alert can arrive minutes after the bank SMS (SMS uses
+     * the signal, not data). A 10-minute window still recognises it as the same payment.
+     * The counting method below keeps genuine repeat payments of the same amount working.
+     */
+    private static final long DEDUPE_WINDOW_MS = 10 * 60_000L;
     private static final long CALLBACK_TIMEOUT_MS = 9_000L;   // SMS receiver must finish < 10 s
     private static final long SPEECH_SAFETY_MS = 25_000L;
     private static final long INIT_TIMEOUT_MS = 6_000L;
@@ -96,6 +102,7 @@ final class Announcer implements TextToSpeech.OnInitListener {
         PowerManager pm = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "UpiVoice:speak");
         wakeLock.setReferenceCounted(false);
+        loadDedupe();
     }
 
     // ---------------------------------------------------------------- public API
@@ -137,7 +144,7 @@ final class Announcer implements TextToSpeech.OnInitListener {
      * than we have announced it. Two genuine ₹10 payments are still both spoken.
      */
     private boolean isNew(String source, long paise) {
-        long now = SystemClock.elapsedRealtime();
+        long now = System.currentTimeMillis();     // wall clock: survives app restarts
         prune(announced, now);
         for (ArrayDeque<long[]> d : sourceEvents.values()) prune(d, now);
         ArrayDeque<long[]> ev = sourceEvents.get(source);
@@ -146,11 +153,37 @@ final class Announcer implements TextToSpeech.OnInitListener {
             sourceEvents.put(source, ev);
         }
         ev.add(new long[]{now, paise});
-        if (count(ev, paise) > count(announced, paise)) {
-            announced.add(new long[]{now, paise});
-            return true;
+        boolean fresh = count(ev, paise) > count(announced, paise);
+        if (fresh) announced.add(new long[]{now, paise});
+        saveDedupe();
+        return fresh;
+    }
+
+    /** Persist the de-duplication record, so a late alert after MIUI restarts the app isn't repeated. */
+    private void saveDedupe() {
+        StringBuilder sb = new StringBuilder();
+        for (long[] e : announced) sb.append("#ann|").append(e[0]).append('|').append(e[1]).append('\n');
+        for (java.util.Map.Entry<String, ArrayDeque<long[]>> m : sourceEvents.entrySet())
+            for (long[] e : m.getValue()) sb.append(m.getKey()).append('|').append(e[0]).append('|').append(e[1]).append('\n');
+        Prefs.putString(app, "dedupe", sb.toString());
+    }
+
+    private void loadDedupe() {
+        long now = System.currentTimeMillis();
+        for (String line : Prefs.sp(app).getString("dedupe", "").split("\n")) {
+            String[] p = line.split("\\|");
+            if (p.length != 3) continue;
+            try {
+                long t = Long.parseLong(p[1]), paise = Long.parseLong(p[2]);
+                if (now - t > DEDUPE_WINDOW_MS) continue;
+                if ("#ann".equals(p[0])) announced.add(new long[]{t, paise});
+                else {
+                    ArrayDeque<long[]> d = sourceEvents.get(p[0]);
+                    if (d == null) { d = new ArrayDeque<>(); sourceEvents.put(p[0], d); }
+                    d.add(new long[]{t, paise});
+                }
+            } catch (NumberFormatException ignored) {}
         }
-        return false;
     }
 
     private static void prune(ArrayDeque<long[]> d, long now) {
@@ -220,10 +253,42 @@ final class Announcer implements TextToSpeech.OnInitListener {
             int r = tts.setLanguage(new Locale("en", "IN"));
             if (r < TextToSpeech.LANG_AVAILABLE) tts.setLanguage(Locale.US);
         }
+        // Use a voice that is installed ON the phone, so speech never waits for (slow) internet.
+        boolean offline = chooseOfflineVoice(locale(eff));
+        if (!offline && !"en".equals(eff)) {
+            // No offline voice for Bengali/Hindi: an internet voice may stall on slow data,
+            // so use an offline English voice instead (the app shows a warning to install it).
+            eff = "en";
+            tts.setLanguage(new Locale("en", "IN"));
+            offline = chooseOfflineVoice(new Locale("en", "IN"));
+        }
+        Prefs.putBool(app, "voice_offline", offline);
         speakLang = eff;
         Prefs.putBool(app, "lang_ok", eff.equals(want));
         tts.setAudioAttributes(attributes());
         tts.setSpeechRate(1.0f);
+    }
+
+    /** Pick the best installed (no-internet) voice for this language. Returns false if there is none. */
+    private boolean chooseOfflineVoice(Locale want) {
+        try {
+            Set<Voice> voices = tts.getVoices();
+            if (voices == null) return false;
+            Voice best = null;
+            int bestScore = Integer.MIN_VALUE;
+            for (Voice v : voices) {
+                Locale l = v.getLocale();
+                if (l == null || !l.getLanguage().equals(want.getLanguage())) continue;
+                if (v.isNetworkConnectionRequired()) continue;
+                Set<String> f = v.getFeatures();
+                if (f != null && f.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
+                int score = (want.getCountry().equals(l.getCountry()) ? 1000 : 0) + v.getQuality() - v.getLatency();
+                if (score > bestScore) { bestScore = score; best = v; }
+            }
+            return best != null && tts.setVoice(best) == TextToSpeech.SUCCESS;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** Synthesize a tiny silent phrase so the voice model is loaded into memory before a payment comes. */

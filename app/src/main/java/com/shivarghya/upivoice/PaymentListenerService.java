@@ -7,8 +7,7 @@ import android.content.pm.PackageManager;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.LinkedHashSet;
 
 /**
  * The system keeps this service bound, so it stays alive without a foreground notification.
@@ -18,16 +17,29 @@ public class PaymentListenerService extends NotificationListenerService {
 
     static volatile boolean connected;
 
-    /** Notifications already handled (apps often re-post/update the same one). */
-    private final Map<String, Boolean> seen = new LinkedHashMap<String, Boolean>(64, 0.75f, true) {
-        @Override protected boolean removeEldestEntry(Map.Entry<String, Boolean> e) { return size() > 60; }
-    };
+    private static final long CATCH_UP_MS = 15 * 60_000L;
 
     @Override
     public void onListenerConnected() {
         connected = true;
         Sources.refresh();                 // re-detect UPI apps (new installs / uninstalls)
         Announcer.get(this).warmUp();      // load the voice now, so payments are spoken instantly
+        catchUp();
+    }
+
+    /**
+     * If MIUI stopped the app (or the phone was off), payment alerts that arrived meanwhile are still
+     * in the notification shade. Announce the recent ones we haven't handled yet.
+     */
+    private void catchUp() {
+        try {
+            StatusBarNotification[] active = getActiveNotifications();
+            if (active == null) return;
+            long now = System.currentTimeMillis();
+            for (StatusBarNotification sbn : active) {
+                if (now - sbn.getPostTime() < CATCH_UP_MS) onNotificationPosted(sbn);
+            }
+        } catch (RuntimeException ignored) {}
     }
 
     @Override
@@ -59,8 +71,7 @@ public class PaymentListenerService extends NotificationListenerService {
         String text = Sources.text(n);
         if (text.isEmpty()) return;
         String key = sbn.getKey() + '|' + text.hashCode();
-        if (seen.containsKey(key)) return;
-        seen.put(key, Boolean.TRUE);
+        if (alreadySeen(key)) return;
 
         long paise = CreditParser.parse(text);
         String label = Sources.label(this, source);
@@ -71,6 +82,19 @@ public class PaymentListenerService extends NotificationListenerService {
         } else {
             Prefs.diag(this, label, text, "not an incoming payment");
         }
+    }
+
+    /** Remembers handled notifications across app restarts (apps often re-post/update the same one). */
+    private boolean alreadySeen(String key) {
+        String k = key.replace('\n', ' ');
+        String stored = Prefs.sp(this).getString("seen", "");
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        for (String s : stored.split("\n")) if (!s.isEmpty()) set.add(s);
+        if (set.contains(k)) return true;
+        set.add(k);
+        while (set.size() > 80) set.remove(set.iterator().next());
+        Prefs.putString(this, "seen", String.join("\n", set));
+        return false;
     }
 
     private boolean hasSmsPermission() {

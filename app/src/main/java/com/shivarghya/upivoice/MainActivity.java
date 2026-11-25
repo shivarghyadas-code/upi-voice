@@ -99,6 +99,8 @@ public class MainActivity extends Activity {
 
         section("2. Announcement");
         root.addView(toggle("Announcements ON", Prefs.enabled(this), on -> Prefs.putBool(this, "enabled", on)));
+        root.addView(text("📶 Works with slow or no mobile data: bank SMS comes over the phone signal "
+                + "and the voice is offline. Keep \"Bank SMS\" ✅ above.", 13));
 
         root.addView(text("Language", 15));
         RadioGroup rg = new RadioGroup(this);
@@ -212,11 +214,12 @@ public class MainActivity extends Activity {
             stListening.setTextColor(GREEN);
         }
 
-        boolean ok = Prefs.langOk(this);
+        boolean ok = Prefs.langOk(this) && Prefs.voiceOffline(this);
         stVoice.setVisibility(ok ? View.GONE : View.VISIBLE);
         btnVoice.setVisibility(ok ? View.GONE : View.VISIBLE);
-        stVoice.setText("⚠ This language's voice isn't installed, so it is speaking English. "
-                + "Tap below → Speech Services by Google → install Bengali / Hindi, then test again.");
+        stVoice.setText("⚠ The offline voice for this language isn't downloaded, so it may speak English "
+                + "or stay silent on slow internet. Tap below → Speech Services by Google → Install voice data "
+                + "→ download Bengali / Hindi (and English India), then press Test.");
 
         StringBuilder apps = new StringBuilder();
         for (String[] a : Sources.installedApps(this)) {
