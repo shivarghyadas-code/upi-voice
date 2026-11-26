@@ -349,27 +349,11 @@ public class PayActivity extends ComponentActivity {
                     } else {
                         String num = mobile(who);
                         if (num == null) { toast("Enter a UPI ID like name@sbi or a 10-digit mobile number"); resume(); return; }
-                        pickHandle(num, p, note.getText().toString());
+                        UpiRequest m = UpiRequest.manual(num + "@upi", note.getText().toString());
+                        m.p.put("_mobile", num);
+                        confirm(m, p);
                     }
                 })
-                .setNegativeButton("Cancel", (d, w) -> resume())
-                .setOnCancelListener(d -> resume())
-                .show();
-    }
-
-    /** A mobile number becomes a UPI ID like 98xxxxxxxx@ybl — ask which app the person uses. */
-    private void pickHandle(String num, long paise, String note) {
-        Map<String, String> h = new LinkedHashMap<>();
-        h.put("@upi — UPI number / BHIM (works for most people)", "@upi");
-        h.put("@ybl — PhonePe", "@ybl");
-        h.put("@ibl — PhonePe", "@ibl");
-        h.put("@axl — PhonePe", "@axl");
-        h.put("@paytm — Paytm", "@paytm");
-        h.put("@ptyes — Paytm", "@ptyes");
-        String[] labels = h.keySet().toArray(new String[0]);
-        new AlertDialog.Builder(this)
-                .setTitle("Which UPI ID does " + num + " use?")
-                .setItems(labels, (d, which) -> confirm(UpiRequest.manual(num + h.get(labels[which]), note), paise))
                 .setNegativeButton("Cancel", (d, w) -> resume())
                 .setOnCancelListener(d -> resume())
                 .show();
@@ -384,7 +368,10 @@ public class PayActivity extends ComponentActivity {
         LinearLayout f = vbox();
         TextView amount = text(Speech.formatRupees(paise), 34, 0xFF202124, true);
         f.addView(amount);
-        f.addView(text("To: " + r.payee(), 16, 0xFF202124, true));
+        f.addView(text("To: " + (r.mobile().isEmpty() ? r.payee() : "mobile " + r.mobile()), 16, 0xFF202124, true));
+        if (!r.isMerchant())
+            f.addView(text("Personal payment: you'll finish it inside your UPI app (PhonePe / Google Pay block "
+                    + "personal payments opened from other apps).", 13, 0xFF5F6368, false));
         for (ScamCheck.Warning w : ws) f.addView(warningBox(w));
         f.addView(text("Your UPI app will ask for your UPI PIN. Check the name it shows before entering the PIN. "
                 + "UPI limits are set by your bank (usually ₹1 lakh per day).", 13, 0xFF5F6368, false));
@@ -407,7 +394,7 @@ public class PayActivity extends ComponentActivity {
                 .setOnCancelListener(d -> resume());
         if (worst != ScamCheck.Level.BLOCK) {
             b.setPositiveButton("Pay with UPI app", (d, w) -> launchPay(r, paise));
-            b.setNeutralButton("No internet: *99#", (d, w) -> ussd(r.payee(), paise));
+            b.setNeutralButton("No internet: *99#", (d, w) -> ussd(r.mobile().isEmpty() ? r.payee() : r.mobile(), paise));
         }
         AlertDialog dlg = b.show();
 
@@ -512,10 +499,17 @@ public class PayActivity extends ComponentActivity {
 
     // ================================================================== pay
 
+    private UpiRequest pendingReq;
+
     private void launchPay(UpiRequest r, long paise) {
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(r.toUri(paise)));
+        pendingReq = r;
         pendingPayee = r.payee();
         pendingPaise = paise;
+        if (!r.isMerchant()) {            // personal UPI ID / mobile → would be declined by the UPI app
+            payInsideApp(r, paise);
+            return;
+        }
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(r.toUri(paise)));
         unlockedAt = System.currentTimeMillis();
         try {
             startActivityForResult(Intent.createChooser(i, "Pay " + Speech.formatRupees(paise) + " with"), REQ_PAY);
@@ -523,6 +517,54 @@ public class PayActivity extends ComponentActivity {
             toast("No UPI app found on this phone");
             resume();
         }
+    }
+
+    /**
+     * Personal payments: copy the UPI ID / mobile number, then open the user's UPI app to pay there.
+     * The scam checks have already been done.
+     */
+    private void payInsideApp(UpiRequest r, long paise) {
+        boolean mob = !r.mobile().isEmpty();
+        String target = mob ? r.mobile() : r.payee();
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText(mob ? "Mobile number" : "UPI ID", target));
+
+        LinearLayout f = vbox();
+        f.addView(text("✅ Scam check done", 15, GREEN, true));
+        f.addView(text("Copied: " + target, 19, 0xFF202124, true));
+        f.addView(text("Amount: " + Speech.formatRupees(paise), 19, 0xFF202124, true));
+        f.addView(text("\n1. Tap your UPI app below\n"
+                + "2. Choose \"" + (mob ? "To mobile number" : "Pay to UPI ID") + "\"\n"
+                + "3. Long-press the box → Paste\n"
+                + "4. Check the NAME it shows, enter " + Speech.formatRupees(paise) + ", then your UPI PIN\n", 15, 0xFF3C4043, false));
+        final AlertDialog[] dlg = new AlertDialog[1];
+        PackageManager pm = getPackageManager();
+        int shown = 0;
+        for (String[] a : Sources.installedApps(this)) {
+            if (a[1].toLowerCase(Locale.ENGLISH).contains("business")) continue;   // business apps can't pay
+            Intent launch = pm.getLaunchIntentForPackage(a[0]);
+            if (launch == null) continue;
+            Button b = new Button(this);
+            b.setText("Open " + a[1]);
+            b.setAllCaps(false);
+            b.setOnClickListener(v -> {
+                rememberPayee();
+                unlockedAt = System.currentTimeMillis();
+                if (dlg[0] != null) dlg[0].dismiss();
+                try { startActivity(launch); } catch (RuntimeException e) { toast("Couldn't open " + a[1]); }
+            });
+            f.addView(b);
+            shown++;
+        }
+        if (shown == 0) f.addView(text("No UPI app found on this phone.", 15, RED, true));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(pad(f));
+        dlg[0] = new AlertDialog.Builder(this)
+                .setTitle("Pay " + Speech.formatRupees(paise) + " in your UPI app")
+                .setView(sv)
+                .setNegativeButton("Close", null)
+                .setOnDismissListener(d -> resume())
+                .show();
     }
 
     /** No internet: official UPI over the phone signal (*99#). */
@@ -533,7 +575,7 @@ public class PayActivity extends ComponentActivity {
                 .setTitle("Pay without internet (*99#)")
                 .setMessage("Works on any signal, no mobile data needed.\n\n"
                         + "1. Tap Call → choose \"Send Money\"\n"
-                        + "2. Choose \"UPI ID\" and type: " + payee + " (copied)\n"
+                        + "2. Choose \"" + (payee.contains("@") ? "UPI ID" : "Mobile No.") + "\" and type: " + payee + " (copied)\n"
                         + "3. Amount: " + Speech.formatRupees(paise) + "\n"
                         + "4. Enter your UPI PIN\n\n"
                         + "Limit ₹5,000 per payment (set by NPCI). Your bank may charge a small fee.")
@@ -580,8 +622,15 @@ public class PayActivity extends ComponentActivity {
             title = "Check your UPI app";
             msg = "The UPI app didn't report the result. Open it to see whether the payment went through.";
         }
-        new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null)
-                .setOnDismissListener(d -> resume()).show();
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null)
+                .setOnDismissListener(d -> resume());
+        final boolean declined = !"SUCCESS".equals(status) && !"SUBMITTED".equals(status) && !"PENDING".equals(status);
+        if (declined && pendingReq != null) {
+            final UpiRequest r = pendingReq;
+            final long p = pendingPaise;
+            b.setNeutralButton("Pay inside the app instead", (d, w) -> main.post(() -> { busy = true; payInsideApp(r, p); }));
+        }
+        b.show();
     }
 
     private static String status(String resp) {

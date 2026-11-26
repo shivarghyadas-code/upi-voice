@@ -53,6 +53,19 @@ final class UpiRequest {
     String name() { return get("pn"); }
     String note() { return get("tn"); }
     boolean validPayee() { return VPA.matcher(payee()).matches(); }
+    /** Set when the user typed a mobile number (payee is then a placeholder "number@upi"). */
+    String mobile() { return get("_mobile"); }
+
+    /**
+     * Shop / merchant QR (has a real merchant code or a signature). UPI apps accept these when
+     * opened from another app; payments to PERSONAL UPI IDs opened this way are declined by
+     * PhonePe / Google Pay for security, so those are finished inside the UPI app instead.
+     */
+    boolean isMerchant() {
+        if (!mobile().isEmpty()) return false;
+        String mc = get("mc").replace("0", "");
+        return !mc.isEmpty() || !get("sign").isEmpty();
+    }
     boolean fromQr() { return raw != null; }
 
     /** Amount written in the QR, in paise, or -1. */
@@ -76,7 +89,7 @@ final class UpiRequest {
         m.put("am", String.format(Locale.ENGLISH, "%d.%02d", paise / 100, paise % 100));
         if (!m.containsKey("cu")) m.put("cu", "INR");
         for (Map.Entry<String, String> e : m.entrySet()) {
-            if (e.getValue().isEmpty()) continue;
+            if (e.getValue().isEmpty() || e.getKey().startsWith("_")) continue;   // "_" = app-internal
             if (!first) sb.append('&');
             sb.append(e.getKey()).append('=').append(encode(e.getValue()));
             first = false;
