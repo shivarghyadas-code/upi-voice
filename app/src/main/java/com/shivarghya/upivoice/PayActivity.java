@@ -133,6 +133,7 @@ public class PayActivity extends ComponentActivity {
 
     private void ready() {
         lockView.setVisibility(View.GONE);
+        new Thread(() -> Safety.riskyApps(getApplicationContext())).start();   // warm the check before paying
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             try { startCamera(); }
             catch (Throwable t) { CrashLog.save(this, "Scan & Pay camera", t); hint.setText("Camera failed to start."); }
@@ -485,6 +486,7 @@ public class PayActivity extends ComponentActivity {
                 ph.screenReaders.add(label);
             }
         }
+        for (String[] a : Safety.riskyApps(this)) ph.riskyApps.add(a[1]);
         ph.newPayee = !Prefs.sp(this).getStringSet("payees", new HashSet<>())
                 .contains(payee.toLowerCase(Locale.ENGLISH));
         return ph;

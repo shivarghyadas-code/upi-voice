@@ -24,6 +24,8 @@ final class Prefs {
     static boolean alarm(Context c) { return sp(c).getBoolean("alarm", true); }
     static boolean repeat(Context c) { return sp(c).getBoolean("repeat", false); }
     static boolean langOk(Context c) { return sp(c).getBoolean("lang_ok", true); }
+    static boolean scamAlerts(Context c) { return sp(c).getBoolean("scam_alerts", true); }
+    static boolean scamVoice(Context c) { return sp(c).getBoolean("scam_voice", true); }
     static boolean voiceOffline(Context c) { return sp(c).getBoolean("voice_offline", true); }
 
     static void putBool(Context c, String k, boolean v) { sp(c).edit().putBoolean(k, v).apply(); }

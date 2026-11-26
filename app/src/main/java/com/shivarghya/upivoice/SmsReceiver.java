@@ -27,10 +27,7 @@ public class SmsReceiver extends BroadcastReceiver {
         for (SmsMessage m : msgs) {
             if (m != null && m.getMessageBody() != null) body.append(m.getMessageBody());
         }
-        if (sender == null || !sender.matches(".*[A-Za-z].*")) {
-            Prefs.diag(context, "SMS from a phone number", null, "ignored (banks never use phone numbers)");
-            return;
-        }
+        if (sender == null) return;
         // Keep the receiver alive until the announcement has been spoken (max ~9 s).
         final PendingResult pending = goAsync();
         SmsHandler.handle(context, sender, body.toString(), msgs[0].getTimestampMillis(),

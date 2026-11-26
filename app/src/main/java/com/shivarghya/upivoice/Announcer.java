@@ -128,6 +128,11 @@ final class Announcer implements TextToSpeech.OnInitListener {
 
     void test(long paise) { enqueue(paise); }
 
+    private static final long WARNING = -1L;
+
+    /** Speak a scam warning. */
+    void warn() { enqueue(WARNING); }
+
     /** Language / channel changed in settings. */
     void settingsChanged() {
         if (tts != null && ready) {
@@ -305,7 +310,7 @@ final class Announcer implements TextToSpeech.OnInitListener {
         boolean twice = Prefs.repeat(app);
         while (!queue.isEmpty()) {
             long paise = queue.peek();
-            String text = Speech.phrase(speakLang, paise);
+            String text = paise == WARNING ? Speech.warning(speakLang) : Speech.phrase(speakLang, paise);
             // Nothing real playing? Flush, so a warm-up / silence never delays the announcement.
             int mode = speaking.isEmpty() ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD;
             if (!speakOne(text, mode)) {

@@ -18,9 +18,14 @@ final class SmsHandler {
      * @return true if it was handled now (false = already handled by the other path)
      */
     static boolean handle(Context c, String sender, String body, long sentTs, long recvTs, String via, Runnable onDone) {
-        if (sender == null || body == null || !sender.matches(".*[A-Za-z].*")) {
+        if (sender == null || body == null) {
             if (onDone != null) onDone.run();
-            return false;                               // banks never send from phone numbers
+            return false;
+        }
+        if (!sender.matches(".*[A-Za-z].*")) {          // from a phone number: never a real bank SMS
+            ScamAlert.message(c, ScamText.check(body, ScamText.From.PHONE_SMS), "SMS from " + sender, body);
+            if (onDone != null) onDone.run();
+            return false;
         }
         String id = sentTs + ":" + Integer.toHexString(body.hashCode());
         if (!firstTime(c, id)) {
@@ -54,6 +59,7 @@ final class SmsHandler {
             if (onDone != null) onDone.run();
         }
         if (!"NONE".equals(e.status)) BankLog.add(c, e);
+        if (paise <= 0) ScamAlert.message(c, ScamText.check(body, ScamText.From.BANK_SENDER), "SMS from " + norm, body);
         return true;
     }
 

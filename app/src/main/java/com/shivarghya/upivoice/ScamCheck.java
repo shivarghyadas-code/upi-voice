@@ -34,6 +34,7 @@ final class ScamCheck {
         boolean inCall;
         List<String> remoteApps = new ArrayList<>();     // AnyDesk, TeamViewer… installed
         List<String> screenReaders = new ArrayList<>();  // other apps with Accessibility (screen reading) on
+        List<String> riskyApps = new ArrayList<>();      // sideloaded apps that can read SMS/OTPs or the screen
         boolean newPayee;                                // never paid this UPI ID before
     }
 
@@ -72,6 +73,12 @@ final class ScamCheck {
         String cu = r.get("cu");
         if (!cu.isEmpty() && !cu.equalsIgnoreCase("INR")) {
             w.add(new Warning(Level.BLOCK, "This QR asks for payment in \"" + cu + "\", not Indian Rupees."));
+        }
+
+        for (String app : ph.riskyApps) {
+            w.add(new Warning(Level.BLOCK, "\"" + app + "\" was installed from outside the Play Store and can read "
+                    + "your OTPs or screen — this is how scammers empty bank accounts. Open UPI Voice → Safety check "
+                    + "to uninstall it (or mark it trusted if you installed it yourself)."));
         }
 
         // ---- DANGER

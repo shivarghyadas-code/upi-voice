@@ -74,6 +74,9 @@ public class MainActivity extends Activity {
         root.addView(title);
         root.addView(text("Speaks out every UPI payment received on this phone — like a shop soundbox.", 14));
         root.addView(button("Open UPI QR screen (for customers)", v -> startActivity(new Intent(this, QrActivity.class))));
+        Button safe = button("🛡 Safety check & scam alerts", v -> startActivity(new Intent(this, SafetyActivity.class)));
+        safe.setTextColor(0xFFC62828);
+        root.addView(safe);
         root.addView(button("✔ Check payment (works without internet)", v -> startActivity(new Intent(this, PaymentCheckActivity.class))));
         root.addView(button("📜 Transaction history", v -> startActivity(new Intent(this, HistoryActivity.class))));
         root.addView(button("📷 Scan & Pay (scam-protected)", v -> startActivity(new Intent(this, PayActivity.class))));

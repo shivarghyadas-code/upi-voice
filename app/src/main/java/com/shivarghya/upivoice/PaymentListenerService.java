@@ -19,6 +19,21 @@ public class PaymentListenerService extends NotificationListenerService {
 
     private static final long CATCH_UP_MS = 15 * 60_000L;
 
+    private static final java.util.Set<String> CHAT_APPS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thunderdog.challegram",
+            "com.facebook.orca", "com.instagram.android", "com.truecaller", "com.google.android.gm"));
+
+    /** Scam check for a chat / SMS-app notification (offline; nothing is stored except a warning). */
+    private void scanChat(StatusBarNotification sbn, String pkg) {
+        Notification n = sbn.getNotification();
+        if (n == null || (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0 || !Prefs.scamAlerts(this)) return;
+        CharSequence title = n.extras == null ? null : n.extras.getCharSequence(Notification.EXTRA_TITLE);
+        String text = Sources.text(n);
+        boolean sms = Sources.isSmsApp(this, pkg);
+        ScamText.Result r = ScamText.check(text, sms ? ScamText.From.PHONE_SMS : ScamText.From.CHAT);
+        if (r != null) ScamAlert.message(this, r, Sources.label(this, pkg) + (title == null ? "" : " · " + title), text);
+    }
+
     @Override
     public void onListenerConnected() {
         connected = true;
@@ -55,6 +70,11 @@ public class PaymentListenerService extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification sbn) {
         if (sbn == null) return;
         String pkg = sbn.getPackageName();
+
+        if (CHAT_APPS.contains(pkg) || (Sources.isSmsApp(this, pkg) && !hasSmsPermission())) {
+            scanChat(sbn, pkg);
+            if (!Sources.isSmsApp(this, pkg)) return;
+        }
 
         String source;
         if (Sources.isPaymentApp(this, pkg)) {

@@ -29,6 +29,15 @@ final class Speech {
         }
     }
 
+    /** Spoken scam warning. */
+    static String warning(String lang) {
+        switch (lang) {
+            case "hi": return "सावधान! यह धोखाधड़ी हो सकती है। किसी लिंक पर क्लिक न करें, कोई ऐप इंस्टॉल न करें, OTP या पिन किसी को न बताएं।";
+            case "bn": return "সাবধান! এটা প্রতারণা হতে পারে। কোনো লিংকে ক্লিক করবেন না, কোনো অ্যাপ ইনস্টল করবেন না, OTP বা পিন কাউকে বলবেন না।";
+            default:   return "Warning! This may be a scam. Do not click any link, do not install any app, and never share your OTP or PIN.";
+        }
+    }
+
     /** Indian-system words for n >= 0, e.g. 12345678 → "1 crore 23 lakh 45 thousand 678". */
     static String words(long n, String lang) {
         if (n < 1000) return Long.toString(n);    // every voice reads 0-999 naturally
