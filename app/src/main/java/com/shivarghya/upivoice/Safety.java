@@ -128,12 +128,14 @@ final class Safety {
         invalidate();
         List<Finding> out = new ArrayList<>();
         PackageManager pm = c.getPackageManager();
+        Set<String> trusted = Prefs.sp(c).getStringSet("trusted_apps", new HashSet<>());
 
         KeyguardManager km = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         if (km != null && !km.isDeviceSecure())
             out.add(f(true, "No screen lock", "Anyone who picks up this phone can open your UPI apps. Set a PIN or fingerprint.", "LOCK", null));
 
         for (String[] r : REMOTE_APPS) {
+            if (trusted.contains(r[0])) continue;
             try {
                 pm.getApplicationInfo(r[0], 0);
                 out.add(f(true, r[1] + " is installed", "Remote-control app: lets a stranger see and control this "
@@ -158,7 +160,8 @@ final class Safety {
         List<ComponentName> admins = dpm == null ? null : dpm.getActiveAdmins();
         if (admins != null) {
             for (ComponentName cn : admins) {
-                if (systemPkg(pm, cn.getPackageName())) continue;
+                if (systemPkg(pm, cn.getPackageName()) || trusted.contains(cn.getPackageName())
+                        || cn.getPackageName().equals(c.getPackageName())) continue;
                 out.add(f(false, appName(pm, cn.getPackageName()) + " is a device admin", "Device-admin apps are hard "
                         + "to uninstall. Remove it if you don't know it.", "ADMIN", cn.getPackageName()));
             }
