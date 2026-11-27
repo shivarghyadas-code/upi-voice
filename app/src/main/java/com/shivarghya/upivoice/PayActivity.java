@@ -143,19 +143,62 @@ public class PayActivity extends ComponentActivity {
 
     // ================================================================== app lock
 
+    /**
+     * Fingerprint / phone-lock check. Uses Android's fingerprint pop-up (drawn by the system UI,
+     * so app lockers don't treat it as "Settings"); falls back to the phone-lock confirm screen.
+     */
     private void authenticate() {
         KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
-        Intent i = null;
-        try {
-            if (km != null && km.isDeviceSecure())
-                i = km.createConfirmDeviceCredentialIntent("Unlock Scan & Pay", "Use your fingerprint, PIN or pattern");
-        } catch (RuntimeException ignored) {}
-        if (i == null) {
-            // No screen lock on this phone (or the lock screen can't be shown): open, with a tip.
+        if (km == null || !km.isDeviceSecure()) {
             unlockedAt = System.currentTimeMillis();
-            if (km == null || !km.isDeviceSecure())
-                Toast.makeText(this, "Tip: set a screen lock (PIN/fingerprint) so nobody else can pay from this phone",
-                        Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Tip: set a screen lock (PIN/fingerprint) so nobody else can pay from this phone",
+                    Toast.LENGTH_LONG).show();
+            ready();
+            return;
+        }
+        authInProgress = true;
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                new android.hardware.biometrics.BiometricPrompt.Builder(this)
+                        .setTitle("Unlock Scan & Pay")
+                        .setSubtitle("Fingerprint or phone PIN / pattern")
+                        .setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK
+                                | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                        .build()
+                        .authenticate(new CancellationSignal(), getMainExecutor(),
+                                new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                                    @Override
+                                    public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) {
+                                        authInProgress = false;
+                                        unlockedAt = System.currentTimeMillis();
+                                        ready();
+                                    }
+
+                                    @Override
+                                    public void onAuthenticationError(int code, CharSequence msg) {
+                                        authInProgress = false;
+                                        boolean userCancel = code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED
+                                                || code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_CANCELED
+                                                || code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON;
+                                        if (userCancel) lockView.setVisibility(View.VISIBLE);
+                                        else confirmWithPhoneLock(km);        // phone can't show the pop-up
+                                    }
+                                });
+                return;
+            } catch (Throwable t) {
+                CrashLog.save(this, "Scan & Pay fingerprint", t);
+            }
+        }
+        confirmWithPhoneLock(km);
+    }
+
+    private void confirmWithPhoneLock(KeyguardManager km) {
+        Intent i = null;
+        try { i = km.createConfirmDeviceCredentialIntent("Unlock Scan & Pay", "Use your fingerprint, PIN or pattern"); }
+        catch (RuntimeException ignored) {}
+        if (i == null) {
+            authInProgress = false;
+            unlockedAt = System.currentTimeMillis();
             ready();
             return;
         }

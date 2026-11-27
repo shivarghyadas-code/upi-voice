@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Scan & Pay unlock with fingerprint / phone lock (system pop-up) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Safety check: find dangerous / remote-control apps; uninstall button; scam warning pop-ups -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
