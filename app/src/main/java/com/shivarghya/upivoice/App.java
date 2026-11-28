@@ -33,6 +33,9 @@ public class App extends Application {
         super.onCreate();
         CrashLog.install(this);
         SmsWatcher.start(this);
+        for (String own : Safety.OWN_APPS) {
+            if (!Prefs.sp(this).getStringSet("trusted_apps", new java.util.HashSet<>()).contains(own)) Safety.trust(this, own);
+        }
         watchNewApps();
     }
 }

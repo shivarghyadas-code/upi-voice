@@ -21,6 +21,9 @@ import java.util.Set;
 
 /** Phone safety checks against the common Indian cyber-scam setups. Runs offline. */
 final class Safety {
+    /** Our own family apps (Private Messages SMS app): never warn about them. */
+    static final java.util.Set<String> OWN_APPS = java.util.Collections.singleton("com.shivarghya.messages");
+
     private Safety() {}
 
     static final class Finding {
@@ -74,7 +77,7 @@ final class Safety {
         PackageManager pm = c.getPackageManager();
         try {
             ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
-            if (isSystem(ai) || pkg.equals(c.getPackageName())) return null;
+            if (isSystem(ai) || pkg.equals(c.getPackageName()) || OWN_APPS.contains(pkg)) return null;
             String inst = installer(pm, pkg);
             if (inst != null && STORES.contains(inst)) return null;
             PackageInfo pi = pm.getPackageInfo(pkg, PackageManager.GET_PERMISSIONS | PackageManager.GET_SERVICES

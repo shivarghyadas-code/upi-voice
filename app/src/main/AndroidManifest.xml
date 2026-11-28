@@ -41,6 +41,8 @@
         <package android:name="com.sbi.SBIFreedomPlus" />
         <package android:name="com.sbi.upi" />
         <package android:name="com.Version1" />
+        <!-- Our own SMS app (Private Messages) -->
+        <package android:name="com.shivarghya.messages" />
         <!-- Remote-control apps used in screen-sharing scams (Scan & Pay warns if installed) -->
         <package android:name="com.anydesk.anydeskandroid" />
         <package android:name="com.anydesk.adcontrol.ad1" />
@@ -158,6 +160,15 @@
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Direct, instant bank SMS from the Private Messages app (verified against the inbox) -->
+        <receiver
+            android:name=".CompanionSmsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.shivarghya.upivoice.BANK_SMS" />
             </intent-filter>
         </receiver>
 
