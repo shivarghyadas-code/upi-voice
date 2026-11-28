@@ -179,7 +179,7 @@ public class PayActivity extends ComponentActivity {
                                         authInProgress = false;
                                         boolean userCancel = code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED
                                                 || code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_CANCELED
-                                                || code == android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON;
+                                                || code == 13;   // BIOMETRIC_ERROR_NEGATIVE_BUTTON (hidden constant in the Android SDK)
                                         if (userCancel) lockView.setVisibility(View.VISIBLE);
                                         else confirmWithPhoneLock(km);        // phone can't show the pop-up
                                     }
